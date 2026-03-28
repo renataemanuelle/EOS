@@ -1,15 +1,126 @@
 #overall functions
+import numpy as np
+import pandas as pd
 
-def scenario(seconds_gran = 20, number_of_requests_0 = 1000, NORAD_ids = [38755, 40053], weather_real = False, simplify = True, 
-                   schedule_start = [2021,7,21,9,40], 
+
+## to run locally 
+# import os
+# os.chdir("//ID.AAU.DK/Users/QF82BM/Desktop/EOSpython") #main folder! not the foder containing the actual python scripts
+
+# from construct_performance_df import *
+# from distance_matrix import *
+# from easy_funcs import *
+# from ID_create import *
+# from LPP_data_setup import *
+# from plot_requests import *
+# from schedule_rel_criteria import *
+# from scipy_sparce_to_spmatrix import *
+# from electre_parallel import *
+
+# seconds_gran = 20
+# number_of_requests_0 = 1000
+# NORAD_ids = [38755, 40053]
+# weather_real = False
+# simplify = False
+# schedule_start = [2024,7,11,9,40]
+# hours_horizon = 8
+# max_off_nadir_angle = 30 #degrees
+# height_satellite = 694   #km
+# rotation_speed = 30/12 #degrees per second #per https://directory.eoportal.org/web/eoportal/satellite-missions/s/spot-6-7
+# cam_resolution = 1 #m^2 per pixel
+# capacity_limit = 1000000 #in mega byte
+# satellite_swath = 3600 #km^2 for square acquisition
+# map_generation=True  #compute maps?
+# API_key = None
+
+##
+
+def customer_db(number_of_requests_0 = 1000,
+                satellite_swath = 3600, #km^2 for square acquisition -> 60 km swath
+                ):
+    import folium
+    import pandas as pd
+    import numpy as np
+    
+    map_generation=True
+    
+    ############# DATA GENERATION INPUT ####################
+    #number of requests from customers through # days!
+    number_of_requests = 0    #note, this is only if we implement a running scheduling preocedure with multiple planning windows
+    #request already in database
+    #number_of_requests_0 = 0
+    ########################################################
+    
+    ################### DATA GENERATION ####################
+    #### schedule relative data ###
+    from EOSpython.schedule_rel_criteria import schedule_criteria
+    day=1
+    total_days = 1
+    df = schedule_criteria(number_of_requests, total_days, number_of_requests_0, satellite_swath)
+    #df.info()
+    #df.head()
+    
+    
+    # import matplotlib.pyplot as plt 
+    # plt.hist(df["priority"])
+    
+    # avg_pri_df = [[list(np.mean(df[df["priority"] == j], axis = 0))[i] for i in [3,4,5,6,7,8,11]] for j in list(range(1,8))]  #the numbers are related to
+    # #np_avg_pri_df = np.array(avg_pri_df)
+    # col_names_avg = list(df.columns[[4,5,6,7,8,9,12]])
+    # df_avg_pri = pd.DataFrame(
+    #         {"measures": col_names_avg,
+    #          "pri 1": avg_pri_df[0],
+    #          "pri 2": avg_pri_df[1],
+    #          "pri 3": avg_pri_df[2],
+    #          "pri 4": avg_pri_df[3],
+    #          "pri 5": avg_pri_df[4],
+    #          "pri 6": avg_pri_df[5],
+    #          "pri 7": avg_pri_df[6],
+    #          }   
+    # )
+    # df_avg_pri.iloc[:,:4] 
+    # df_avg_pri.iloc[:,4:] 
+    
+    
+    #### prelimenary data analysis begins - COLLECT VALID DATA
+    #changing waiting time accordingly
+    DF_i = df[(df["day"] <= day) & (df["acquired"] == 0)]
+    pd.options.mode.chained_assignment = None
+    
+    added_wait = list()
+    for i in range(0,DF_i.shape[0]):
+        added_wait.append(np.random.randint(1,14))  #age distribution randomly uniform 1 to 14!!!!!!
+    DF_i["waiting time"] = day - DF_i["day"] + np.array(added_wait)
+    #stereo requests into multiple requests
+    #DF_i["stereo"]>1
+    
+    
+    #data_time_end_generation = data_time_start - timeit.default_timer() 
+    
+    
+    ##Start map generation
+    if map_generation == True:
+        m = folium.Map(location=[20, 0], zoom_start=2) #tiles= 'Cartodb Positron'
+        from EOSpython.plot_requests import plot_requests
+        plot_requests(m, df = DF_i, name = "request location", radius = 5)  
+        #file is called all_requests.html
+    
+    return(DF_i,m)
+    
+
+def scenario(customer_database, m, seconds_gran = 20, NORAD_ids = [38755, 40053], 
+                   weather_real = False, 
+                   simplify = False, 
+                   schedule_start = [2024,7,11,9,40], 
                    hours_horizon = 8, 
                    max_off_nadir_angle = 30, #degrees
                    height_satellite = 694,   #km
                    rotation_speed = 30/12, #degrees per second #per https://directory.eoportal.org/web/eoportal/satellite-missions/s/spot-6-7
                    cam_resolution = 1, #m^2 per pixel
                    capacity_limit = 1000000, #in mega byte
-                   satellite_swath = 3600,
-                   map_generation=True): #compute maps?
+                   satellite_swath = 3600, #km^2 for square acquisition
+                   map_generation=True,  #compute maps?
+                   API_key = None):      #API KEY for OWM  
     # NORAD_ids = [38012, 39019]
     # seconds_gran =10
     # number_of_requests_0 =30
@@ -19,24 +130,76 @@ def scenario(seconds_gran = 20, number_of_requests_0 = 1000, NORAD_ids = [38755,
     #from satellite_tle import fetch_tle_from_celestrak
     import requests
     
+    # old
+    # TLEs = [ 
+    #     ["SPOT 6", 
+    #     "1 38755U 12047A   25151.49982629  .00000384  00000+0  92364-4 0  9997",
+    #     "2 38755  98.1777 219.5906 0001087 101.0353 259.0969 14.58550739677445"],
+    #     ["SPOT 7",
+    #     "1 40053U 14034A   25151.49612290  .00000514  00000+0  11559-3 0  9994",
+    #     "2 40053  98.1122 217.8093 0001342  83.6007 276.5347 14.60447509581436"]
+    # ]
     
+    # usado para geracao de instancia 2025_09_01
+    # TLEs = [
+    # ["SPOT 6", 
+    #  "1 38755U 12047A   25244.59147619  .00000689  00000+0  15796-3 0  9994", 
+    #  "2 38755  98.1708 311.1800 0001164 103.6018 256.5311 14.58579787690984", 
+    #  ""], 
+    # ["SPOT 7", 
+    #  "1 40053U 14034A   25244.60224324  .00000986   00000+0  21257-3 0  9996", 
+    #  "2 40053  98.1050 308.9626 0001538  86.5969 273.5407 14.60543075595003",
+    #  ""]
+    # ]
+
+    # TLEs = list()
+    # tle = requests.get('https://renata.free.beeceptor.com/seila'.format(NORAD_ids[0]), #new version
+    #                        verify=True, 
+    #                        timeout=20)
+    # TLE = tle.text.split('\n')
+    # TLEs.append(TLE)
+    # tle2 = requests.get('https://renata.free.beeceptor.com/seila2'.format(NORAD_ids[1]), #new version
+    #                        verify=True, 
+    #                        timeout=20)
+    # TLE = tle2.text.split('\n')
+    # TLEs.append(TLE)
     
     TLEs = list()
     for i in range(0, len(NORAD_ids)):
         #tle = requests.get('https://www.celestrak.com/satcat/tle.php?CATNR={}'.format(NORAD_ids[i]), #old version
-        tle = requests.get('https://www.celestrak.com/NORAD/elements/gp.php?CATNR={}&FORMAT=TLE'.format(NORAD_ids[i]), #new version
-                           verify=True, 
-                           timeout=20)
-        TLE = tle.text.split('\r\n')
+        tle = "SPOT 6\r\n1 38755U 12047A   25354.62722674  .00000394  00000+0  94532-4 0  9999\r\n2 38755  98.1570  59.2669 0001351  78.2954 281.8397 14.58539265707024"
+        TLE = tle.split('\r\n')
         TLEs.append(TLE)
-    #NORAD_ids = [38012, 39019, 38755, 40053]
+    # NORAD_ids = [38012, 39019, 38755, 40053]
+    print(TLEs)
     
+
+    ############### TLE FETCHING ##################
+    # TLEs = list()
+    # for i in range(0, len(NORAD_ids)):
+    #     #tle = requests.get('https://www.celestrak.com/satcat/tle.php?CATNR={}'.format(NORAD_ids[i]), #old version
+    #     tle = requests.get('https://www.celestrak.com/NORAD/elements/gp.php?CATNR={}&FORMAT=TLE'.format(NORAD_ids[i]), #new version
+    #                        verify=True, 
+    #                        timeout=20)
+    #     TLE = tle.text.split('\r\n')
+    #     TLEs.append(TLE)
+    # # NORAD_ids = [38012, 39019, 38755, 40053]
+    # print(TLEs)
+
     ################### SCHEDULE INPUT ##################
-    #starting time for horizon
-    import random
-    random.seed(42)
     
-    #time_stochastic = random.uniform(0,24)
+    #packages
+    import ephem
+    from math import degrees, floor
+    import folium
+    import pandas as pd
+    import numpy as np
+    np.random.seed(42)
+    
+
+
+    #starting time for horizon    
+    #time_stochastic = np.random.uniform(0,24)
     start_schedule = datetime.datetime(schedule_start[0],schedule_start[1],schedule_start[2],schedule_start[3],schedule_start[4]) #- datetime.timedelta(hours=int(time_stochastic))
     #start_schedule = datetime.datetime(2020,5,8,12,50)
     #datetime.datetime.utcnow() - datetime.timedelta(days=total_days+day) - datetime.timedelta(hours = 18)
@@ -48,8 +211,7 @@ def scenario(seconds_gran = 20, number_of_requests_0 = 1000, NORAD_ids = [38755,
     #i.e. time segmentation
     #number of satellite
     number_of_satellites = len(NORAD_ids)
-    #compute maps?
-    map_generation=True
+    
     ####################################################
     
     ################## SATELLITE INPUT #################
@@ -90,69 +252,67 @@ def scenario(seconds_gran = 20, number_of_requests_0 = 1000, NORAD_ids = [38755,
     
     ############# DATA GENERATION INPUT ####################
     #number of requests from customers through # days!
-    number_of_requests = 0
+    #number_of_requests = 0    #note, this is only if we implement a running scheduling preocedure with multiple planning windows
     #request already in database
     #number_of_requests_0 = 0
     ########################################################
-    
-    #packages
-    import ephem
-    from math import degrees, floor
-    import folium
-    import pandas as pd
-    import numpy as np
-    np.random.seed(42)
      
     #import timeit
     #data_time_start = timeit.default_timer() 
     
-    ################### DATA GENERATION ####################
-    #### schedule relative data ###
-    from EOSpython.schedule_rel_criteria import schedule_criteria
-    day=1
-    total_days = 1
-    df = schedule_criteria(number_of_requests, total_days, number_of_requests_0, satellite_swath)
-    #df.info()
-    avg_pri_df = [[list(np.mean(df[df["priority"] == j], axis = 0))[i] for i in [3,4,5,6,7,8,11]] for j in list(range(1,8))]
-    #np_avg_pri_df = np.array(avg_pri_df)
-    col_names_avg = list(df.columns[[4,5,6,7,8,9,12]])
-    df_avg_pri = pd.DataFrame(
-            {"measures": col_names_avg,
-             "pri 1": avg_pri_df[0],
-             "pri 2": avg_pri_df[1],
-             "pri 3": avg_pri_df[2],
-             "pri 4": avg_pri_df[3],
-             "pri 5": avg_pri_df[4],
-             "pri 6": avg_pri_df[5],
-             "pri 7": avg_pri_df[6],
-             }   
-    )
-    df_avg_pri.iloc[:,:4] 
-    df_avg_pri.iloc[:,4:] 
+    # ################### DATA GENERATION ####################
+    # #### schedule relative data ###
+    # from EOSpython.schedule_rel_criteria import schedule_criteria
+    # day=1
+    # total_days = 1
+    # df = schedule_criteria(number_of_requests, total_days, number_of_requests_0, satellite_swath)
+    # #df.info()
+    # #df.head()
     
     
-    #### prelimenary data analysis begins - COLLECT VALID DATA
-    #changing waiting time accordingly
-    DF_i = df[(df["day"] <= day) & (df["acquired"] == 0)]
-    pd.options.mode.chained_assignment = None
+    # # import matplotlib.pyplot as plt 
+    # # plt.hist(df["priority"])
     
-    added_wait = list()
-    for i in range(0,DF_i.shape[0]):
-        added_wait.append(random.randint(1,14))  #age distribution randomly uniform 1 to 14!!!!!!
-    DF_i["waiting time"] = day - DF_i["day"] + np.array(added_wait)
-    #stereo requests into multiple requests
-    #DF_i["stereo"]>1
+    # # avg_pri_df = [[list(np.mean(df[df["priority"] == j], axis = 0))[i] for i in [3,4,5,6,7,8,11]] for j in list(range(1,8))]  #the numbers are related to
+    # # #np_avg_pri_df = np.array(avg_pri_df)
+    # # col_names_avg = list(df.columns[[4,5,6,7,8,9,12]])
+    # # df_avg_pri = pd.DataFrame(
+    # #         {"measures": col_names_avg,
+    # #          "pri 1": avg_pri_df[0],
+    # #          "pri 2": avg_pri_df[1],
+    # #          "pri 3": avg_pri_df[2],
+    # #          "pri 4": avg_pri_df[3],
+    # #          "pri 5": avg_pri_df[4],
+    # #          "pri 6": avg_pri_df[5],
+    # #          "pri 7": avg_pri_df[6],
+    # #          }   
+    # # )
+    # # df_avg_pri.iloc[:,:4] 
+    # # df_avg_pri.iloc[:,4:] 
     
     
-    #data_time_end_generation = data_time_start - timeit.default_timer() 
+    # #### prelimenary data analysis begins - COLLECT VALID DATA
+    # #changing waiting time accordingly
+    # DF_i = df[(df["day"] <= day) & (df["acquired"] == 0)]
+    # pd.options.mode.chained_assignment = None
+    
+    # added_wait = list()
+    # for i in range(0,DF_i.shape[0]):
+    #     added_wait.append(np.random.randint(1,14))  #age distribution randomly uniform 1 to 14!!!!!!
+    # DF_i["waiting time"] = day - DF_i["day"] + np.array(added_wait)
+    # #stereo requests into multiple requests
+    # #DF_i["stereo"]>1
     
     
-    ##Start map generation
-    if map_generation == True:
-        m = folium.Map(location=[20, 0], zoom_start=2) #tiles= 'Cartodb Positron'
-        from EOSpython.plot_requests import plot_requests, plot_requests2
-        plot_requests(m, df = DF_i, name = "request location", radius = 5)  
-        #file is called all_requests.html
+    # #data_time_end_generation = data_time_start - timeit.default_timer() 
+    
+    
+    # ##Start map generation
+    # if map_generation == True:
+    #     m = folium.Map(location=[20, 0], zoom_start=2) #tiles= 'Cartodb Positron'
+    #     from EOSpython.plot_requests import plot_requests, plot_requests2
+    #     plot_requests(m, df = DF_i, name = "request location", radius = 5)  
+    #     #file is called all_requests.html
     
     
     
@@ -181,7 +341,7 @@ def scenario(seconds_gran = 20, number_of_requests_0 = 1000, NORAD_ids = [38755,
     
     ### DATA COMPUTATION (satellite relative) 
     from EOSpython.distance_matrix import distance_matrix
-    distance = distance_matrix(location_slots, DF_i, max_off_nadir_angle, height_satellite, number_of_satellites)
+    distance = distance_matrix(location_slots, customer_database, max_off_nadir_angle, height_satellite, number_of_satellites)
     print("number of reachable attempts:", np.sum(~np.isnan(distance)))
     
     #data_time_end_path = data_time_start - timeit.default_timer() 
@@ -194,9 +354,10 @@ def scenario(seconds_gran = 20, number_of_requests_0 = 1000, NORAD_ids = [38755,
         generate_weather = True
         
     from EOSpython.construct_performance_df import construct_performance_df
-    performance_df = construct_performance_df(DF_i, seconds_gran, location_slots, time_slots, 
+    performance_df = construct_performance_df(customer_database, seconds_gran, location_slots, time_slots, 
                                               distance, height_satellite, hours_ahead, 
-                                              weather = weather, generate_weather = generate_weather)
+                                              weather = weather, generate_weather = generate_weather,
+                                              api = API_key)
     print("number of attempts within thresholds:", performance_df.shape[0])
     print("number of requests", len(np.unique(performance_df['ID'])))
     #plot satellite path
@@ -215,6 +376,7 @@ def scenario(seconds_gran = 20, number_of_requests_0 = 1000, NORAD_ids = [38755,
         m.save("sat_path.html")
     
     if map_generation == True:
+        from EOSpython.plot_requests import plot_requests2
         plot_requests2(m, df = performance_df, name = "request location")  
         #file is called all_requests.html
     
@@ -256,44 +418,34 @@ def scenario(seconds_gran = 20, number_of_requests_0 = 1000, NORAD_ids = [38755,
     # based on certain weight dis input - what is closest schedule(s)
     
     scenario.LPP = LPP
-    scenario.df = DF_i
+    scenario.df = customer_database
     scenario.pf_df = LPP.performance_df
     scenario.m = m
-    return(EOSscenario)
-    
+    scenario.sats = NORAD_ids
+    return(scenario)
 
 
-
-
-
-
-
-def solve(x_data, scoring_method=2, solution_method="DAG", 
-            criteria_weights = np.array([0,0,0,0,0,0,1,0]), 
-            threshold_parameters= np.array([[0,0,1000],
-                                            [0,0,40],
-                                            [0,0,40],
-                                            [0,0,15],
-                                            [0,0,4],
-                                            [0,0,20000],
-                                            [0,0,1], 
-                                            [0,0,1]]), 
-            alpha = 1):
-    #import ephem
-    #from math import degrees, floor
-    #import folium
+def score_requests(x_data, 
+                   scoring_method=2, 
+                   criteria_weights_l = [0,0,0,0,0,0,1,0], 
+                   threshold_parameters_l = [[0,0,1000],
+                                             [0,0,40],
+                                             [0,0,40],
+                                             [0,0,15],
+                                             [0,0,4],
+                                             [0,0,20000],
+                                             [0,0,1], 
+                                             [0,0,1]],
+                    alpha=1,
+                    SMAA_version=0,
+                    MC_runs=1,
+                    ):
     import pandas as pd
     import numpy as np
     import time
-    #performance_df = x_data.pf_df
-    #performance_df.info()
-    #performance_df.columns[[7,11,12,13,15,16,17,18,19]]
-    
-    #### Call generated data frames 
-    #performance_df.to_csv(r'C:\Users\allex\Desktop\SPECIALE\data\10reach.csv', index = ";", header=True)
-    #read diff data 
-    #reach10_data = pd.read_csv(r'C:\Users\allex\Desktop\SPECIALE\data\10reach.csv', sep = ",")
-    #performance_df = reach10_data.iloc[:,1:]
+
+    criteria_weights = np.array(criteria_weights_l)
+    threshold_parameters = np.array(threshold_parameters_l)
     
     #naming convention
     LPP = x_data.LPP
@@ -303,7 +455,7 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
     #IDENTIFY CRITERIA TO INCLUDE IN SCORING PROCEDURE
     dat = np.array(performance_df.iloc[:,[7,11,12,13,15,17,18,19]].transpose())  #which criteria is important in performance df
     #NOTE FOR PAPER 3 - 16th col is not included as criteria 
-    
+
     #from fuzzy_topsis import fuzzytopsis
     from EOSpython.easy_funcs import topsis
     from EOSpython.electre_parallel import parallelectre
@@ -319,12 +471,12 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
     SMAA_version = 0 #0 = no usage, 1 = version 1 , 1 = version 2 
     MC_runs = 1
                #(area, distance, angle, sun elevation, cloud cover, pri, type, price, age, uncertainty)
-# =============================================================================
-#     q = np.array([1000,    10,      2,       1,           0,          0,    0,    0,    1,      0])    #indifference
-#     p = np.array([1500,    25,      4,       5,           5,        0.8,    0.5,  3000,   5,   0.2])  #preferred
-#     #v = np.array([20000,   100,    10,      10,          15,       0.3,    2,    40000, 6,  0.3])  #veto
-#     v = np.array([100000, 250,    40,      70,           60,       1.2,    0.8, 100000, 10,   0.8])  #veto
-# =============================================================================
+    # =============================================================================
+    #     q = np.array([1000,    10,      2,       1,           0,          0,    0,    0,    1,      0])    #indifference
+    #     p = np.array([1500,    25,      4,       5,           5,        0.8,    0.5,  3000,   5,   0.2])  #preferred
+    #     #v = np.array([20000,   100,    10,      10,          15,       0.3,    2,    40000, 6,  0.3])  #veto
+    #     v = np.array([100000, 250,    40,      70,           60,       1.2,    0.8, 100000, 10,   0.8])  #veto
+    # =============================================================================
     #####################################
     
     
@@ -361,12 +513,12 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
         q = np.array([0, 2, 2, 0, 0,0,0,0])
         p = np.array([50,5,5,5,1, 1000, 0, 2])
         v = np.array([1000, 40, 40, 15, 2, 10000, 13, 5])
-# =============================================================================
-#         The airbus mimiced parameters
-#         q = np.array([0,0, 2, 2.424, 4.021, 0,0,0,1,0])
-#         p = np.array([1500,0,4,5,5,0.8, 0.5, 3000, 5, 2])
-#         v = np.array([100000, 0, 40, 70, 15.319, 0.812, 0.704, 100000, 10, 5])
-# =============================================================================
+    # =============================================================================
+    #         The airbus mimiced parameters
+    #         q = np.array([0,0, 2, 2.424, 4.021, 0,0,0,1,0])
+    #         p = np.array([1500,0,4,5,5,0.8, 0.5, 3000, 5, 2])
+    #         v = np.array([100000, 0, 40, 70, 15.319, 0.812, 0.704, 100000, 10, 5])
+    # =============================================================================
     else:
         q = threshold_parameters[:,0]
         p = threshold_parameters[:,1]
@@ -381,8 +533,7 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
     #weights[:,0] = np.array([0.0005, 0, 0.0004, 0.0002, 0.2885727, 0.13339262, 0.87803468, 0, 0.0005, 0])    
     objective_np = np.array([1,0,1,0,0,0,1,1,1]) #note for paper 3 - remove customer critiera 6th
     
-    schedules = np.zeros((performance_df.shape[0], MonteCarlo_runss))
-    for i in range(0, MonteCarlo_runss):
+    for ss in range(0, MonteCarlo_runss):
         
         if SMAA_version == 1:
             MonteCarlo_runs_v1 = MC_runs
@@ -394,24 +545,17 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
                 dat[3,:][dat[3,:] < 0] = 0
                 #global score with topsis or electre
                 if (scoring_method == 0):
-                    #priority
-                    priority_airbus = [100000000,1000000,10000,6600,3300,120,1]
-                    weather_airbus = (100-dat[3,:])/100
-                    s_1cell = 3600
-                    score_airbus = np.zeros((dat.shape[1]))
-                    for s in range(0,dat.shape[1]):
-                        score_airbus[s] = priority_airbus[int(dat[4,s])-1] * (1+ 4*weather_airbus[s] + 2*(dat[0,s]/s_1cell))
-                        score = score_airbus
+                    print("This scoring method is not available!")
                     
                 if (scoring_method == 1):
-                    FT = topsis(dat, objective_np, weights[:,i])
+                    FT = topsis(dat, objective_np, weights[:,ss])
                     score = FT.score
                     print('scored!')
                     #note topsis can score a request with 0, if it is the worst global alternative..
                     score = score + 0.000001
                     
                 if (scoring_method == 2):
-                    FT = parallelectre(dat, q, p, v, objective_np, weights[:,i])
+                    FT = parallelectre(dat, q, p, v, objective_np, weights[:,ss])
                     score = np.mean(FT.score, axis = 1)
                     print('scored!')
                 
@@ -429,21 +573,20 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
                 #save v1 scoring
                 score_v1[:,h] = score
             score = np.mean(score_v1, axis = 1)
-                
+            
         else:
-            #global score with topsis, electre, naive
+        #global score with topsis, electre, naive
+        
+        #priority modification for airbus score
             
-            #priority modification for airbus score
-            
-                
             if (scoring_method == 1):
-                FT = topsis(dat, objective_np, weights[:,i])
+                FT = topsis(dat, objective_np, weights[:,ss])
                 score = FT.score
                 #note topsis can score a request with 0, if it is the worst global alternative..
                 score = score + 0.000001
                 
             if (scoring_method == 2):
-                FT = parallelectre(dat, p, q, v, objective_np, weights[:,i])
+                FT = parallelectre(dat, q, p, v, objective_np, weights[:,ss])
                 score = np.mean(FT.score, axis = 1)
             
             if (scoring_method == 3):
@@ -455,219 +598,699 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
                     if objective[j] == 0:
                         w_n[j,:] = 1 - w_n[j,:]
                 for j in range(0,dat.shape[1]):
-                    score[j] = w_n[:,j] @ weights[:,i]
+                    score[j] = w_n[:,j] @ weights[:,ss]
             
             #political valuation
             score = score**alpha
-            print('scoring complete')
-            
-                
-                
-                
-        if solution_method == "gurobi":
-            import gurobipy as grb
-            opt_model = grb.Model(name="BLP_Model")
-            #LPP solution
-            f = -score
-            
-            set_I = range(1, len(f)+1)
-            # if x is Binary
-            x_vars  = {(i): opt_model.addVar(vtype=grb.GRB.BINARY,
-                       name="x_{0}".format(i)) for i in set_I}
-            
-            # <= constraints
-            set_J = range(1, len(LPP.RHS)+1)
-            a = {(j,i) : np.array(matrix(LPP.LHS))[j-1,i-1] for j in set_J for i in set_I}
-            b = {(j): LPP.RHS[j-1] for j in set_J}
-            c = {(j,i) : LPP.eLHS[j-1,i-1] for j in range(1,LPP.eLHS.shape[0]) for i in set_I}
-            d = {(j): LPP.eRHS[j-1] for j in range(1,LPP.eLHS.shape[0])}
-            
-            #LPP.eLHS
-            #LPP.eRHS
-            # <= constraints
-            constraints1 = {j : 
-            opt_model.addConstr(
-                    lhs=grb.quicksum(a[j,i] * x_vars[i] for i in set_I),
-                    sense=grb.GRB.LESS_EQUAL,
-                    rhs=b[j], 
-                    name="constraint1_{0}".format(j))
-                for j in set_J}
-            
-            # == constraints
-            constraints2 = {j : 
-            opt_model.addConstr(
-                    lhs=grb.quicksum(c[j,i] * x_vars[i] for i in set_I),
-                    sense=grb.GRB.EQUAL,
-                    rhs=b[j], 
-                    name="constraint2_{0}".format(j))
-                for j in range(1,LPP.eLHS.shape[0])}
-            
-            
-            #OBJECTIVE
-            f = {(i): -score[i-1] for i in set_I}    
-            objective = grb.quicksum(x_vars[i] * f[i] for i in set_I)
-            
-            # for minimization
-            opt_model.ModelSense = grb.GRB.MINIMIZE
-            opt_model.setObjective(objective)
-            
-            #solve
-            opt_model.optimize()
-            
-            #assign solution
-            opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns = ["variable_object"])
-            opt_df.reset_index(inplace=True)
-            
-            opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: item.X)
-            
-            #save x
-            schedules[:,i] = np.array(opt_df["solution_value"])
-            
-            opt_model
-            print(opt_model.solve_details.time, opt_model.solve_details.status)
-            
-            
-            
-            
-        
-        
-        if solution_method == "PuLP":
-            import pulp as plp
-            opt_model = plp.LpProblem(name="BLP_Model")
-            
-            #LPP solution
-            f = -score
-            
-            set_I = range(1, len(f)+1)
-            x_vars  = {(i): plp.LpVariable(cat=plp.LpBinary, name="x_{0}_1".format(i)) for i in set_I}
-                
-            
-            # <= constraints
-            set_J = range(1, len(LPP.RHS)+1)
-            a = {(j,i) : np.array(matrix(LPP.LHS))[j-1,i-1] for j in set_J for i in set_I}
-            b = {(j): LPP.RHS[j-1] for j in set_J}
-            c = {(j,i) : LPP.eLHS[j-1,i-1] for j in range(1,LPP.eLHS.shape[0]) for i in set_I}
-            d = {(j): LPP.eRHS[j-1] for j in range(1,LPP.eLHS.shape[0])}
-            
-            #LPP.eLHS
-            #LPP.eRHS
-            constraints1 = {j : opt_model.addConstraint(
-                    plp.LpConstraint(
-                                 e=plp.lpSum(a[j,i] * x_vars[i] for i in set_I),
-                                 sense=plp.LpConstraintLE,
-                                 rhs=b[j],
-                                 name="constraint1_{0}".format(j)))
-                           for j in set_J}
-            
-            # == constraints
-            constraints2 = {j : opt_model.addConstraint(
-            plp.LpConstraint(
-                         e=plp.lpSum(c[j,i] * x_vars[i] for i in set_I),
-                         sense=plp.LpConstraintEQ,
-                         rhs=d[j],
-                         name="constraint2_{0}".format(j)))
-                   for j in range(1,LPP.eLHS.shape[0])}
-            
-            #OBJECTIVE
-            f = {(i): -score[i-1] for i in set_I}    
-            objective = plp.lpSum(x_vars[i] * f[i] for i in set_I)
-            
-            # for minimization
-            opt_model.sense = plp.LpMinimize
-            opt_model.setObjective(objective)
-            
-            # solving with CBC
-            opt_model.solve()
-            
-            #assign solution
-            import pandas as pd
-            opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns = ["variable_object"])
-            opt_df.reset_index(inplace=True)
-            
-            opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: item.varValue)
-            
-            
-            #save x
-            schedules[:,i] = np.array(opt_df["solution_value"])
 
-            print(plp.LpStatus[opt_model.status])
-       
-        
-        if solution_method == "cplex":
-            import docplex.mp.model as cpx
-            opt_model = cpx.Model(name="BLP_Model")
-            #LPP solution
-            f = -score
-            
-            set_I = range(1, len(f)+1)
-            x_vars = {(i,0): opt_model.binary_var(name="x_{0}_0".format(i)) for i in set_I}
-            
-            # <= constraints
-            set_J = range(1, len(LPP.RHS)+1)
-            a = {(j,i) : np.array(matrix(LPP.LHS))[j-1,i-1] for j in set_J for i in set_I}
-            b = {(j): LPP.RHS[j-1] for j in set_J}
-            c = {(j,i) : LPP.eLHS[j-1,i-1] for j in range(1,LPP.eLHS.shape[0]) for i in set_I}
-            d = {(j): LPP.eRHS[j-1] for j in range(1,LPP.eLHS.shape[0])}
-            
-            #LPP.eLHS
-            #LPP.eRHS
-            constraints1 = {j : 
-            opt_model.add_constraint(
-                    ct=opt_model.sum(a[j,i] * x_vars[i,0] for i in set_I) <= b[j],
-                    ctname="constraint1_{0}".format(j)) for j in set_J}
-            
-            # == constraints
-            constraints2 = {j : 
-            opt_model.add_constraint(
-                    ct=opt_model.sum(c[j,i] * x_vars[i,0] for i in set_I) == d[j],
-                    ctname="constraint2_{0}".format(j)) for j in range(1,LPP.eLHS.shape[0])}
-            
-            #OBJECTIVE
-            f = {(i): -score[i-1] for i in set_I}    
-            objective = opt_model.sum(x_vars[i,0] * f[i] 
-                          for i in set_I)
-            
-            #solve with cplex cloud
-            opt_model.time_limit = 60 #1e75          
+    return score
 
-            API_cplexcloud = 'api_a60ae489-9091-4c39-b7e2-90135566c662'
-            cplex_cloud_url = 'https://api-oaas.docloud.ibmcloud.com/job_manager/rest/v1/'
-            opt_model.solve(url=cplex_cloud_url, key=API_cplexcloud)
-            
-            #assign solution
-            opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns = ["variable_object"])
-            opt_df.index = pd.MultiIndex.from_tuples(opt_df.index, names=["column_i", "column_j"])
-            opt_df.reset_index(inplace=True)
-            
-            opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: item.solution_value)
-            
-            #save x
-            schedules[:,i] = np.array(opt_df["solution_value"])
 
-            print(opt_model.solve_details.time, opt_model.solve_details.status)
-                        
-            
-        if solution_method == "GLPK":
-            #LPP solution
-            f = -score
-            start_time = time.time()
+def solve(x_data, scoring_method=2, solution_method="DAG", 
+            criteria_weights_l = [0,0,0,0,0,0,1,0], 
+            threshold_parameters_l =    [[0,0,1000],
+                                        [0,0,40],
+                                        [0,0,40],
+                                        [0,0,15],
+                                        [0,0,4],
+                                        [0,0,20000],
+                                        [0,0,1], 
+                                        [0,0,1]], 
+            alpha = 1, 
+            API_key = None,
+            score_column="score_electre", # alteração para usar a coluna de score que for gerada na função de score_requests
+            use_existing_score=True # se True, usa a coluna de score especificada em score_column; se False, recalcula o score usando score_requests
+          ):
+    #import ephem
+    #from math import degrees, floor
+    #import folium
+    import pandas as pd
+    import numpy as np
+    import time
+    #performance_df = x_data.pf_df
+    #performance_df.info()
+    #performance_df.columns[[7,11,12,13,15,16,17,18,19]]
+    criteria_weights = np.array(criteria_weights_l)
+    threshold_parameters = np.array(threshold_parameters_l)
 
-            output_cvxopt = glpk.ilp(c = matrix(f), G = LPP.LHS, h = matrix(LPP.RHS), # A = matrix(LPP.eLHS), b = matrix(LPP.eRHS),
-                                     I = set(binVars), B = set(binVars))
-            x = np.array(output_cvxopt[1])
-            
-            end_time = time.time() - start_time
-            
-            schedules[:,i] = np.squeeze(x)
+    #### Call generated data frames 
+    #performance_df.to_csv(r'C:\Users\allex\Desktop\SPECIALE\data\10reach.csv', index = ";", header=True)
+    #read diff data 
+    #reach10_data = pd.read_csv(r'C:\Users\allex\Desktop\SPECIALE\data\10reach.csv', sep = ",")
+    #performance_df = reach10_data.iloc[:,1:]
     
-            print(f@x, end_time)
-            #global airbus score  
-            #GS = np.dot(np.squeeze(x), score_airbus)
-            #f@x
-            #np.sum(x)/len(x)
+    #naming convention
+    LPP = x_data.LPP
+    DF_i = x_data.df
+    performance_df = x_data.pf_df
+    
+    #IDENTIFY CRITERIA TO INCLUDE IN SCORING PROCEDURE
+    dat = np.array(performance_df.iloc[:,[7,11,12,13,15,17,18,19]].transpose())  #which criteria is important in performance df
+    #NOTE FOR PAPER 3 - 16th col is not included as criteria 
+    
+    # ------------------------------------------------------------
+    # Reuse precomputed score if available (scenario is "frozen")
+    # ------------------------------------------------------------
+    score = None
+    if use_existing_score and (score_column is not None) and (score_column in performance_df.columns):
+        score = performance_df[score_column].to_numpy()
+
+        # validação mínima (evita casos de NaN ou tamanho errado)
+        if score.shape[0] != performance_df.shape[0]:
+            score = None
+        else:
+            # se tiver NaN, invalida e recalcula
+            try:
+                import numpy as np
+                if np.isnan(score.astype(float)).any():
+                    score = None
+            except Exception:
+                # se não der pra converter pra float, invalida e recalcula
+                score = None
+
+    
+    #from fuzzy_topsis import fuzzytopsis
+    from EOSpython.easy_funcs import topsis
+    from EOSpython.electre_parallel import parallelectre
+    from cvxopt import matrix
+    from cvxopt import glpk
+    #glpk.options["show_progress"] = True
+    #glpk.options["maxiters"] = 1000
+    
+    binVars = range(dat.shape[1])
+    
+    ###### setup test environment #######
+    #scoring_method = 0 #0 = airbus, 1 = TOPSIS, 2 = ELECTRE, 3 = naive scoring method
+    SMAA_version = 0 #0 = no usage, 1 = version 1 , 1 = version 2 
+    MC_runs = 1
+               #(area, distance, angle, sun elevation, cloud cover, pri, type, price, age, uncertainty)
+    # =============================================================================
+    #     q = np.array([1000,    10,      2,       1,           0,          0,    0,    0,    1,      0])    #indifference
+    #     p = np.array([1500,    25,      4,       5,           5,        0.8,    0.5,  3000,   5,   0.2])  #preferred
+    #     #v = np.array([20000,   100,    10,      10,          15,       0.3,    2,    40000, 6,  0.3])  #veto
+    #     v = np.array([100000, 250,    40,      70,           60,       1.2,    0.8, 100000, 10,   0.8])  #veto
+    # =============================================================================
+    #####################################
+    
+    
+    if SMAA_version == 2:
+        #create weights
+        MonteCarlo_runss = MC_runs
+        weights = np.zeros((dat.shape[0], MonteCarlo_runss))
+        i=0
+        for k in list(np.array(list(range(1,1000, int(1000/(MonteCarlo_runss)))))/1000):
+            weights[:,i] = np.random.dirichlet(np.ones(dat.shape[0])*float(k),size=1)
+            i=i+1
+        #np.std(weights, axis = 0)
+    
+    if SMAA_version == 1:
+        MonteCarlo_runss = 1
+    
+    if SMAA_version == 0:
+        MonteCarlo_runss = 1
+        weights = np.zeros((dat.shape[0], MonteCarlo_runss))
+        weights[:,0] = np.array([1]*dat.shape[0])/dat.shape[0] #equal
+        #w_other = (1-0.5)/(dat.shape[0]-1)
+        #customer type 0.5
+        #weights[:,0] = np.array([w_other,w_other,w_other,w_other, 0.5, w_other,w_other,w_other])
+        #uncertainty 0.5
+        #weights[:,0] = np.array([w_other,w_other,w_other,w_other, w_other, w_other,w_other,0.5])
+    
+    #scenarios
+    #(area, angle, sun elevation, cloud cover, pri, price, age, uncertainty)
+    #weights[:,0] = np.array([0,0,0,0,0,0,0,1,0,0]) #profit
+    #weights[:,0] = np.array([0,0,0,0,0,0,0,0,1,0]) #lead time
+    #weights[:,0] = np.array([0,0,0,0,1,0,0,0,0,0]) #cloud cover
+    #weights[:,0] = np.array([0.25, 0, 0, 0, 0.25, 0.25, 0.25, 0, 0, 0]) 
+    if type(threshold_parameters) is not np.ndarray:
+        q = np.array([0, 2, 2, 0, 0,0,0,0])
+        p = np.array([50,5,5,5,1, 1000, 0, 2])
+        v = np.array([1000, 40, 40, 15, 2, 10000, 13, 5])
+    # =============================================================================
+    #         The airbus mimiced parameters
+    #         q = np.array([0,0, 2, 2.424, 4.021, 0,0,0,1,0])
+    #         p = np.array([1500,0,4,5,5,0.8, 0.5, 3000, 5, 2])
+    #         v = np.array([100000, 0, 40, 70, 15.319, 0.812, 0.704, 100000, 10, 5])
+    # =============================================================================
+    else:
+        q = threshold_parameters[:,0]
+        p = threshold_parameters[:,1]
+        v = threshold_parameters[:,2]
+    
+    
+    if type(criteria_weights) is not np.ndarray:
+        weights[:,0] = np.array([1]*dat.shape[0])/dat.shape[0] #equal
+    else:
+        weights[:,0] = criteria_weights
+
+    #weights[:,0] = np.array([0.0005, 0, 0.0004, 0.0002, 0.2885727, 0.13339262, 0.87803468, 0, 0.0005, 0])    
+    objective_np = np.array([1,0,1,0,0,0,1,1,1]) #note for paper 3 - remove customer critiera 6th
+    
+    # Se score já foi carregado do cenário, não calcula novamente
+    skip_scoring = use_existing_score and (score is not None)
+
+    
+    schedules = np.zeros((performance_df.shape[0], MonteCarlo_runss))
+    if not skip_scoring:
+
+        for ss in range(0, MonteCarlo_runss):
+        
+            if SMAA_version == 1:
+                MonteCarlo_runs_v1 = MC_runs
+                score_v1 = np.zeros((performance_df.shape[0], MonteCarlo_runs_v1))
+                #len_x = len(dat[4,:])
+                for h in range(0, MonteCarlo_runs_v1):
+                    dat[3,:] = dat[3,:] + np.multiply(np.random.uniform(-1,1,1)*20, dat[8,:])  #len_x instead of 1
+                    dat[3,:][dat[3,:] > 100] = 100
+                    dat[3,:][dat[3,:] < 0] = 0
+                    #global score with topsis or electre
+                    if (scoring_method == 0):
+                        print("This scoring method is not available!")
+                        
+                    if (scoring_method == 1):
+                        FT = topsis(dat, objective_np, weights[:,ss])
+                        score = FT.score
+                        print('scored!')
+                        #note topsis can score a request with 0, if it is the worst global alternative..
+                        score = score + 0.000001
+                        
+                    if (scoring_method == 2):
+                        FT = parallelectre(dat, q, p, v, objective_np, weights[:,ss])
+                        score = np.mean(FT.score, axis = 1)
+                        print('scored!')
+                    
+                    if (scoring_method == 3):
+                        objective = objective_np
+                        w_n = np.zeros((dat.shape))
+                        score = np.zeros((dat.shape[1]))
+                        for j in range(0, dat.shape[0]):
+                            w_n[j,:] = dat[j,:]/max(dat[j,:])
+                            if objective[j] == 0:
+                                w_n[j,:] = 1 - w_n[j,:]
+                        for j in range(0,dat.shape[1]):
+                            score[j] = w_n[:,j] @ weights[:,0]
+                        print('scored!')
+                    #save v1 scoring
+                    score_v1[:,h] = score
+                score = np.mean(score_v1, axis = 1)
+                
+            else:
+            #global score with topsis, electre, naive
             
+            #priority modification for airbus score
+                
+                if (scoring_method == 1):
+                    FT = topsis(dat, objective_np, weights[:,ss])
+                    score = FT.score
+                    #note topsis can score a request with 0, if it is the worst global alternative..
+                    score = score + 0.000001
+                    
+                if (scoring_method == 2):
+                    FT = parallelectre(dat, q, p, v, objective_np, weights[:,ss])
+                    score = np.mean(FT.score, axis = 1)
+                
+                if (scoring_method == 3):
+                    objective = objective_np
+                    w_n = np.zeros((dat.shape))
+                    score = np.zeros((dat.shape[1]))
+                    for j in range(0, dat.shape[0]):
+                        w_n[j,:] = dat[j,:]/max(dat[j,:])
+                        if objective[j] == 0:
+                            w_n[j,:] = 1 - w_n[j,:]
+                    for j in range(0,dat.shape[1]):
+                        score[j] = w_n[:,j] @ weights[:,ss]
+                
+                #political valuation
+                score = score**alpha
+                print('scoring complete')
+    
+    else:
+        print(f"Using existing score from column '{score_column}' without recalculating.")
+        score = np.asarray(score).reshape(-1)        
+                      
+    ss = 0
+                
+    if solution_method == "gurobi":
+        # import gurobipy as grb
+        # opt_model = grb.Model(name="BLP_Model")
+        # #LPP solution
+        # f = -score
+        
+        # set_I = range(1, len(f)+1)
+        # # if x is Binary
+        # x_vars  = {(i): opt_model.addVar(vtype=grb.GRB.BINARY,
+        #            name="x_{0}".format(i)) for i in set_I}
+        
+        # # <= constraints
+        # set_J = range(1, len(LPP.RHS)+1)
+        # a = {(j,i) : np.array(matrix(LPP.LHS))[j-1,i-1] for j in set_J for i in set_I}
+        # b = {(j): LPP.RHS[j-1] for j in set_J}
+        # c = {(j,i) : LPP.eLHS[j-1,i-1] for j in range(1,LPP.eLHS.shape[0]) for i in set_I}
+        # d = {(j): LPP.eRHS[j-1] for j in range(1,LPP.eLHS.shape[0])}
+        
+        # #LPP.eLHS
+        # #LPP.eRHS
+        # # <= constraints
+        # constraints1 = {j : 
+        # opt_model.addConstr(
+        #         lhs=grb.quicksum(a[j,i] * x_vars[i] for i in set_I),
+        #         sense=grb.GRB.LESS_EQUAL,
+        #         rhs=b[j], 
+        #         name="constraint1_{0}".format(j))
+        #     for j in set_J}
+        
+        # # == constraints
+        # constraints2 = {j : 
+        # opt_model.addConstr(
+        #         lhs=grb.quicksum(c[j,i] * x_vars[i] for i in set_I),
+        #         sense=grb.GRB.EQUAL,
+        #         rhs=b[j], 
+        #         name="constraint2_{0}".format(j))
+        #     for j in range(1,LPP.eLHS.shape[0])}
+        
+        
+        # #OBJECTIVE
+        # f = {(i): -score[i-1] for i in set_I}    
+        # objective = grb.quicksum(x_vars[i] * f[i] for i in set_I)
+        
+        # # for minimization
+        # opt_model.ModelSense = grb.GRB.MINIMIZE
+        # opt_model.setObjective(objective)
+        
+        # #solve
+        # opt_model.optimize()
+        
+        # #assign solution
+        # opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns = ["variable_object"])
+        # opt_df.reset_index(inplace=True)
+        
+        # opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: item.X)
+        
+        # #save x
+        # schedules[:,i] = np.array(opt_df["solution_value"])
+        
+        # opt_model
+        # print(opt_model.solve_details.time, opt_model.solve_details.status)
+        
+        
+        ###
+        
+        import gurobipy as grb
+        # Assuming LPP and score are defined somewhere else in your code
+        # LPP.LHS, LPP.RHS, LPP.eLHS, LPP.eRHS should be numpy arrays or similar structures
+        # score should be a list or numpy array
+        
+        # Initialize model
+        opt_model = grb.Model(name="BLP_Model")
+        
+        # Objective coefficients (assuming score is a list or numpy array of coefficients)
+        f = -np.array(score)
+        
+        # Set of decision variables indices
+        set_I = range(1, len(f) + 1)
+        
+        # Add binary decision variables to the model
+        x_vars = {i: opt_model.addVar(vtype=grb.GRB.BINARY, name=f"x_{i}") for i in set_I}
+        
+        # Constraints indices
+        set_J = range(1, len(LPP.RHS) + 1)
+        
+        # Coefficients for <= constraints
+        a = {(j, i): LPP.LHS[j - 1, i - 1] for j in set_J for i in set_I}
+        b = {j: LPP.RHS[j - 1] for j in set_J}
+        
+        # Coefficients for == constraints
+        eLHS_shape = LPP.eLHS.shape
+        c = {(j, i): LPP.eLHS[j - 1, i - 1] for j in range(1, eLHS_shape[0] + 1) for i in set_I}
+        d = {j: LPP.eRHS[j - 1] for j in range(1, eLHS_shape[0] + 1)}
+        
+        # Adding <= constraints
+        constraints1 = {
+            j: opt_model.addLConstr(
+                lhs=grb.quicksum(a[j, i] * x_vars[i] for i in set_I),
+                sense=grb.GRB.LESS_EQUAL,
+                rhs=b[j],
+                name=f"constraint1_{j}"
+            ) for j in set_J
+        }
+        
+        # Adding == constraints
+        constraints2 = {
+            j: opt_model.addLConstr(
+                lhs=grb.quicksum(c[j, i] * x_vars[i] for i in set_I),
+                sense=grb.GRB.EQUAL,
+                rhs=d[j],
+                name=f"constraint2_{j}"
+            ) for j in range(1, eLHS_shape[0] + 1)
+        }
+        
+        # Objective function coefficients
+        f = {i: -score[i - 1] for i in set_I}
+        
+        # Objective function
+        objective = grb.quicksum(x_vars[i] * f[i] for i in set_I)
+        opt_model.ModelSense = grb.GRB.MINIMIZE
+        opt_model.setObjective(objective)
+        
+        # Measure the start time
+        start_time = time.time()
+        
+        # Optimize the model
+        opt_model.optimize()
+        
+        # Assign solution to a DataFrame
+        opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns=["variable_object"])
+        opt_df.reset_index(inplace=True)
+        opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: item.X)
+        
+        # Assuming 'schedules' is defined and has the appropriate shape
+        # Update schedules with the solution values
+        for i, val in enumerate(opt_df["solution_value"]):
+            schedules[i,ss] = val
+        
+        end_time = time.time() - start_time
+        
+        x = schedules[:,ss]
+        
+        # Output model details
+        print(f"Optimization time: {opt_model.Runtime}")
+        print(f"Optimization status: {opt_model.Status}")
+    
+    if solution_method == "PuLP":
+        # import pulp as plp
+        # opt_model = plp.LpProblem(name="BLP_Model")
+        
+        # #LPP solution
+        # f = -score
+        
+        # set_I = range(1, len(f)+1)
+        # x_vars  = {(i): plp.LpVariable(cat=plp.LpBinary, name="x_{0}_1".format(i)) for i in set_I}
             
-        if solution_method[0:3] == "DAG":
+        
+        # # <= constraints
+        # set_J = range(1, len(LPP.RHS)+1)
+        # a = {(j,i) : np.array(matrix(LPP.LHS))[j-1,i-1] for j in set_J for i in set_I}
+        # b = {(j): LPP.RHS[j-1] for j in set_J}
+        # c = {(j,i) : LPP.eLHS[j-1,i-1] for j in range(1,LPP.eLHS.shape[0]) for i in set_I}
+        # d = {(j): LPP.eRHS[j-1] for j in range(1,LPP.eLHS.shape[0])}
+        
+        # #LPP.eLHS
+        # #LPP.eRHS
+        # constraints1 = {j : opt_model.addConstraint(
+        #         plp.LpConstraint(
+        #                      e=plp.lpSum(a[j,i] * x_vars[i] for i in set_I),
+        #                      sense=plp.LpConstraintLE,
+        #                      rhs=b[j],
+        #                      name="constraint1_{0}".format(j)))
+        #                for j in set_J}
+        
+        # # == constraints
+        # constraints2 = {j : opt_model.addConstraint(
+        # plp.LpConstraint(
+        #              e=plp.lpSum(c[j,i] * x_vars[i] for i in set_I),
+        #              sense=plp.LpConstraintEQ,
+        #              rhs=d[j],
+        #              name="constraint2_{0}".format(j)))
+        #        for j in range(1,LPP.eLHS.shape[0])}
+        
+        # #OBJECTIVE
+        # f = {(i): -score[i-1] for i in set_I}    
+        # objective = plp.lpSum(x_vars[i] * f[i] for i in set_I)
+        
+        # # for minimization
+        # opt_model.sense = plp.LpMinimize
+        # opt_model.setObjective(objective)
+        
+        # # solving with CBC
+        # opt_model.solve()
+        
+        # #assign solution
+        # import pandas as pd
+        # opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns = ["variable_object"])
+        # opt_df.reset_index(inplace=True)
+        
+        # opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: item.varValue)
+        
+        
+        # #save x
+        # schedules[:,i] = np.array(opt_df["solution_value"])
+
+        # print(plp.LpStatus[opt_model.status])
+        
+        ##
+        import pulp
+        #import time 
+
+        # Assuming LPP and score are defined somewhere else in your code
+        # LPP.LHS, LPP.RHS, LPP.eLHS, LPP.eRHS should be numpy arrays or similar structures
+        # score should be a list or numpy array
+        
+        # Initialize the model
+        opt_model = pulp.LpProblem(name="BLP_Model", sense=pulp.LpMinimize)
+        
+        # Objective coefficients (assuming score is a list or numpy array of coefficients)
+        f = -np.array(score)
+        
+        # Set of decision variables indices
+        set_I = range(1, len(f) + 1)
+        
+        # Add binary decision variables to the model
+        x_vars = {i: pulp.LpVariable(f"x_{i}", cat=pulp.LpBinary) for i in set_I}
+        
+        # Constraints indices
+        set_J = range(1, len(LPP.RHS) + 1)
+        
+        # Coefficients for <= constraints
+        a = {(j, i): LPP.LHS[j - 1, i - 1] for j in set_J for i in set_I}
+        b = {j: LPP.RHS[j - 1] for j in set_J}
+        
+        # Coefficients for == constraints
+        eLHS_shape = LPP.eLHS.shape
+        c = {(j, i): LPP.eLHS[j - 1, i - 1] for j in range(1, eLHS_shape[0] + 1) for i in set_I}
+        d = {j: LPP.eRHS[j - 1] for j in range(1, eLHS_shape[0] + 1)}
+        
+        # Adding <= constraints
+        for j in set_J:
+            opt_model += (pulp.lpSum(a[j, i] * x_vars[i] for i in set_I) <= b[j], f"constraint1_{j}")
+        
+        # Adding == constraints
+        for j in range(1, eLHS_shape[0] + 1):
+            opt_model += (pulp.lpSum(c[j, i] * x_vars[i] for i in set_I) == d[j], f"constraint2_{j}")
+        
+        # Objective function coefficients
+        f = {i: -score[i - 1] for i in set_I}
+        
+        # Objective function
+        opt_model += pulp.lpSum(x_vars[i] * f[i] for i in set_I)
+        
+        # Measure the start time
+        start_time = time.time()
+
+        # Solve the model
+        opt_model.solve()
+        
+        # Measure the end time
+        end_time = time.time()
+        
+        elapsed_time = end_time - start_time
+        
+        # Assign solution to a DataFrame
+        opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns=["variable_object"])
+        opt_df.reset_index(inplace=True)
+        opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: pulp.value(item))
+        
+        # Assuming 'schedules' is defined and has the appropriate shape
+        # Update schedules with the solution values
+        for i, val in enumerate(opt_df["solution_value"]):
+            schedules[i,ss] = val
+        
+        x = schedules[:,ss]
+        
+        # Output model details
+        print(f"Optimization time: {elapsed_time} seconds")
+        print(f"Optimization status: {pulp.LpStatus[opt_model.status]}")
+                       
+    if solution_method == "cplex":
+        # import docplex.mp.model as cpx
+        # opt_model = cpx.Model(name="BLP_Model")
+        # #LPP solution
+        # f = -score
+        
+        # set_I = range(1, len(f)+1)
+        # x_vars = {(i,0): opt_model.binary_var(name="x_{0}_0".format(i)) for i in set_I}
+        
+        # # <= constraints
+        # set_J = range(1, len(LPP.RHS)+1)
+        # a = {(j,i) : np.array(matrix(LPP.LHS))[j-1,i-1] for j in set_J for i in set_I}
+        # b = {(j): LPP.RHS[j-1] for j in set_J}
+        # c = {(j,i) : LPP.eLHS[j-1,i-1] for j in range(1,LPP.eLHS.shape[0]) for i in set_I}
+        # d = {(j): LPP.eRHS[j-1] for j in range(1,LPP.eLHS.shape[0])}
+        
+        # #LPP.eLHS
+        # #LPP.eRHS
+        # constraints1 = {j : 
+        # opt_model.add_constraint(
+        #         ct=opt_model.sum(a[j,i] * x_vars[i,0] for i in set_I) <= b[j],
+        #         ctname="constraint1_{0}".format(j)) for j in set_J}
+        
+        # # == constraints
+        # constraints2 = {j : 
+        # opt_model.add_constraint(
+        #         ct=opt_model.sum(c[j,i] * x_vars[i,0] for i in set_I) == d[j],
+        #         ctname="constraint2_{0}".format(j)) for j in range(1,LPP.eLHS.shape[0])}
+        
+        # #OBJECTIVE
+        # f = {(i): -score[i-1] for i in set_I}    
+        # objective = opt_model.sum(x_vars[i,0] * f[i] 
+        #               for i in set_I)
+        
+        # #solve with cplex cloud
+        # opt_model.time_limit = 60 #1e75          
+
+
+        # cplex_cloud_url = 'https://api-oaas.docloud.ibmcloud.com/job_manager/rest/v1/'
+        # opt_model.solve(url=cplex_cloud_url, key=API_key)
+        
+        # #assign solution
+        # opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns = ["variable_object"])
+        # opt_df.index = pd.MultiIndex.from_tuples(opt_df.index, names=["column_i", "column_j"])
+        # opt_df.reset_index(inplace=True)
+        
+        # opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: item.solution_value)
+        
+        # #save x
+        # schedules[:,i] = np.array(opt_df["solution_value"])
+
+        # print(opt_model.solve_details.time, opt_model.solve_details.status)
+        
+        
+        ####
+        
+        print("not functioning at the moment due to CPLEX dependency on older versions of Python and Numpy.. will hopefully soon be resolved")
+        
+        # from docplex.mp.model import Model
+        
+        # # Assuming LPP and score are defined somewhere else in your code
+        # # LPP.LHS, LPP.RHS, LPP.eLHS, LPP.eRHS should be numpy arrays or similar structures
+        # # score should be a list or numpy array
+        
+        # # Initialize the model
+        # opt_model = Model(name="BLP_Model")
+        
+        # # Objective coefficients (assuming score is a list or numpy array of coefficients)
+        # f = -np.array(score)
+        
+        # # Set of decision variables indices
+        # set_I = range(1, len(f) + 1)
+        
+        # # Add binary decision variables to the model
+        # x_vars = {(i, 0): opt_model.binary_var(name=f"x_{i}_0") for i in set_I}
+        
+        # # Constraints indices
+        # set_J = range(1, len(LPP.RHS) + 1)
+        
+        # # Coefficients for <= constraints
+        # a = {(j, i): LPP.LHS[j - 1, i - 1] for j in set_J for i in set_I}
+        # b = {j: LPP.RHS[j - 1] for j in set_J}
+        
+        # # Coefficients for == constraints
+        # eLHS_shape = LPP.eLHS.shape
+        # c = {(j, i): LPP.eLHS[j - 1, i - 1] for j in range(1, eLHS_shape[0] + 1) for i in set_I}
+        # d = {j: LPP.eRHS[j - 1] for j in range(1, eLHS_shape[0] + 1)}
+        
+        # # Adding <= constraints
+        # constraints1 = {
+        #     j: opt_model.add_constraint(
+        #         ct=opt_model.sum(a[j, i] * x_vars[i, 0] for i in set_I) <= b[j],
+        #         ctname=f"constraint1_{j}"
+        #     ) for j in set_J
+        # }
+        
+        # # Adding == constraints
+        # constraints2 = {
+        #     j: opt_model.add_constraint(
+        #         ct=opt_model.sum(c[j, i] * x_vars[i, 0] for i in set_I) == d[j],
+        #         ctname=f"constraint2_{j}"
+        #     ) for j in range(1, eLHS_shape[0] + 1)
+        # }
+        
+        # # Objective function coefficients
+        # f = {i: -score[i - 1] for i in set_I}
+        
+        # # Objective function
+        # objective = opt_model.sum(x_vars[i, 0] * f[i] for i in set_I)
+        # opt_model.minimize(objective)
+        
+        # # Set a time limit for the solver
+        # opt_model.set_time_limit(60)
+        
+        # # Solve the model with CPLEX cloud
+        # cplex_cloud_url = 'https://api-oaas.docloud.ibmcloud.com/job_manager/rest/v1/'
+        # API_key = 'YOUR_API_KEY_HERE'
+        # opt_model.solve(url=cplex_cloud_url, key=API_key)
+        
+        # # Assign solution to a DataFrame
+        # opt_df = pd.DataFrame.from_dict(x_vars, orient="index", columns=["variable_object"])
+        # opt_df.index = pd.MultiIndex.from_tuples(opt_df.index, names=["column_i", "column_j"])
+        # opt_df.reset_index(inplace=True)
+        
+        # opt_df["solution_value"] = opt_df["variable_object"].apply(lambda item: item.solution_value)
+        
+        # # Assuming 'schedules' is defined and has the appropriate shape
+        # # Update schedules with the solution values
+        # for i, val in enumerate(opt_df["solution_value"]):
+        #     schedules[:, i] = val
+        
+        # # Output model details
+        # print(f"Optimization time: {opt_model.solve_details.time}")
+        # print(f"Optimization status: {opt_model.solve_details.status}")
+        
+    if solution_method == "GLPK":
+        # #LPP solution
+        # f = -score
+        # start_time = time.time()
+
+        # output_cvxopt = glpk.ilp(c = matrix(f), G = LPP.LHS, h = matrix(LPP.RHS), # A = matrix(LPP.eLHS), b = matrix(LPP.eRHS),
+        #                          I = set(binVars), B = set(binVars))
+        # x = np.array(output_cvxopt[1])
+        
+        # end_time = time.time() - start_time
+        
+        # schedules[:,i] = np.squeeze(x)
+
+        # print(f@x, end_time)
+                    
+        # Objective coefficients (assuming score is a list or numpy array of coefficients)
+        f = -np.array(score)
+        
+        # Convert numpy arrays to cvxopt matrices
+        c = matrix(f)
+        G = matrix(LPP.LHS)
+        h = matrix(LPP.RHS)
+        A = matrix(LPP.eLHS) if LPP.eLHS.size else None
+        b = matrix(LPP.eRHS) if LPP.eRHS.size else None
+        
+        # Start time
+        start_time = time.time()
+        
+        # Solve the problem using GLPK
+        status, x = glpk.ilp(c=c, G=G, h=h, A=A, b=b, I=set(binVars), B=set(binVars))
+        
+        # Extract the solution
+        x = np.array(x).flatten()
+        
+        # End time
+        end_time = time.time() - start_time
+        
+        # Assuming 'schedules' is defined and has the appropriate shape
+        # Update schedules with the solution values
+        # Replace 'i' with the appropriate column index if needed
+        schedules[:, ss] = np.squeeze(x)
+        
+        # Output the results
+        print(np.dot(f, x), end_time)
+         
+    if solution_method[0:3] == "DAG":
             #note, currently all attempts are denoted by a digit - we do another abstraction 
             #to represent each choice as the edge between two attempts, that is each attempt 
             #is a node, while all the feasible rotations between attempts are the edges of  
@@ -687,7 +1310,7 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
                         new_index_list[i] = i+1
             
             #check for changes needed
-            numberofsatellites = 2
+            numberofsatellites = len(x_data.sats)
             check_1 = any(np.diff(new_index_list) == 0) 
             check_2 = np.sum(np.diff(np.array(performance_df['satellite']))!=0) != numberofsatellites-1 #number of satellites
             #check_3 = any(np.array(np.diff(np.array(performance_df['time'], dtype = 'timedelta64[ns]')), dtype = 'int64')<0)
@@ -899,7 +1522,7 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
                                             print(ind_stereo)
                                         ##
                                         
-                                        new_stereo = int(ind_stereo)
+                                        new_stereo = int(ind_stereo[0])
                                         #x_temp2 = np.zeros(len(x))
                                         #length_temp2 = np.zeros(len(ind_stereo))
                                         #for i_ss in range(0,len(ind_stereo)):
@@ -926,121 +1549,13 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
             
             end_time = time.time() - start_time
             #schedules[:,i] = np.squeeze(x)
-            print('acq, objvalue, runtime:', np.sum(x),  -np.max(weight_of_path), end_time)                    
+            #print('acq, objvalue, runtime:', np.sum(x),  -np.max(weight_of_path), end_time)                    
+            print('acq, objvalue, runtime:', np.sum(x),  -score@x, end_time)                    
                     
-#            ##EXTENDED LONGEST PATH ALGORITHM    
-#            longest_path_to_node = [[] for i in range(0,len(performance_df))]
-#            weight_of_path = np.zeros((len(performance_df)))
-#
-#            
-#            for i in range(0, len(performance_df)):
-#                #i+=1
-#                incomming_neighbours = list(np.where(edges[max(0,i-depth_edges_Search):i,i])[0])
-#                #if zero longest path is just it se lf.    
-#                if len(incomming_neighbours) == 0:
-#                    #longest_path_to_node[i].append(-1)
-#                    longest_path_to_node[i].append(i)
-#                    weight_of_path[i] = score[i]
-#                else:
-#                    #find all interdependent attempts relative to current node
-#                    which_id = np.where(inter_attempts[:,i]==1)[0]
-#                    inter_i = np.where(inter_attempts[which_id,:])[1]
-#                    #relative to strips and stereo
-#                    allowed_stereo = set(np.where(stereo[np.where(stereo[:,i] == -1)[0],:i])[0])
-#                    strips_interdependent_i = np.where(strips[:,i]==1)[0]
-#                    
-#                    
-#                    ##initiate loop to find largest path not including an interdependent node
-#                    max_path_weight = 0
-#                    max_path = list()
-#                    for j in range(0,min(depth_independent_Search,len(incomming_neighbours))):
-#                        max_neighbour = np.argmax(weight_of_path[incomming_neighbours])
-#                        vertice_which = incomming_neighbours[max_neighbour]
-#                        #check if vertice is already included (interdependent other node)
-#                        s1 = set(longest_path_to_node[vertice_which])
-#                        s2 = set(inter_i)
-#                        intersection = s1.intersection(s2)
-#                        if j == 0 and len(intersection) == 0:
-#                            max_path = list(s1)
-#                            break
-#                        #check if any interdependent can be omitted due to the stereo and strip allowing constraints?
-#                        #  Note, intersection is the similarity between interdependent attempts and already included relative to the current investigated attempt.
-#                        #  If we remove attempts from intersection, they are removed from interdependent list, and thereby added to the final list checked for max path.
-#                        
-#                        #stereo - just remove from intersection if they are allowed by stereo constraint.
-#                        intersection = intersection - allowed_stereo
-#                        
-#                        #strips
-#                        if len(strips_interdependent_i) > 0: 
-#                            strips_interdependent = set(np.where(strips[strips_interdependent_i,:])[1])
-#                            strips_allowed = list(intersection.intersection(strips_interdependent))
-#                            #all strips are allowed, if number of strips does not exceed the allowed constrained number.
-#                            if len(strips_allowed) < strips_num_acq[int(strips_interdependent_i)]:
-#                                intersection = intersection - set(strips_allowed)
-#                            #locate least benefitting attempt in strips (interdepedent) - remove that! (note, neglects possible profit from alternative where old attempt where removed)
-#                            else: 
-#                                min_strip_i = np.argmin(weight_of_path[strips_allowed])
-#                                min_strip = strips_allowed[min_strip_i]
-#                                #remove the least contributing strip from intersec
-#                                intersection = intersection - (set(strips_allowed) - set([min_strip]))
-#                                s1 = s1 - set([min_strip])
-#                        #As a rule of thumb the intersection will at most include one illegal node.
-#                        #we therefore search if there is any legal nodes that connects the same pair 
-#                        #of nodes as the intersection, if so we include that 
-#                        #if len(s1) > 1 and len(intersection)==1:
-#                        #    s1.add(i)
-#                        #    s1_check = np.array(list(s1))
-#                        #    argsort = np.argsort(np.abs(s1_check-np.array(list(intersection))))
-#                        #    idx_min = np.where(np.isin(argsort,[1,2]))
-#                        #    s1_id = s1_check[idx_min]
-#                        #    s1.remove(i)
-#                        #    #find other connecting edge:
-#                        #    connecting0 = np.where(1*edges[s1_id[0],s1_id[0]:(s1_id[1]+1)] + 1*edges[s1_id[0]:(s1_id[1]+1), s1_id[1]] == 2)[0]
-#                        #    connecting = np.array(range(s1_id[0], s1_id[1]+1))[connecting0]
-#                        #    
-#                        #    #check if not already included 
-#                        #    not_included = np.where(np.isin(connecting, list(s1)) == False)[0]
-#                        #    if len(not_included) > 0:
-#                        #        #continue check and add node to that s1
-#                        #        connecting = connecting[not_included]
-#                        #        #legal?
-#                        #        legal = connecting[np.where(np.isin(connecting, strips_interdependent_i) == False)[0]]
-#                        #        #highest
-#                        #        highest_connection = int(legal[np.argmax(score[legal])])
-#                        #        s1.add(highest_connection)
-#                        #        #Note, should not be added for future nodes as only relevant for this one
-#                
-#                            #if no edges connects - path is as it is
-#                            
-#                        #path weight without previous interdependent node
-#                        max_path0 = list(s1-intersection)
-#                        max_path_weight0 = np.sum(score[max_path0])
-#                        if max_path_weight0 > max_path_weight:
-#                            max_path = max_path0
-#                            max_path_weight = max_path_weight0
-#                        #delete the already checked vertice
-#                        del incomming_neighbours[max_neighbour]
-#                        
-#                    longest_path_to_node[i] = max_path  
-#                    longest_path_to_node[i].append(i)
-#                    weight_of_path[i] = np.sum(score[longest_path_to_node[i]])  
-#                    
-#                    
-#            x = np.zeros((len(performance_df)))
-#            x[longest_path_to_node[np.argmax(weight_of_path)]] = 1
-#            
-#            #x = longest_path_to_node
-#            
-#            end_time = time.time() - start_time
-#            #schedules[:,i] = np.squeeze(x)
-#            print(depth_independent_Search, depth_edges_Search,  np.max(weight_of_path), end_time)
-                        
-            
+
             #SMAA
             
-            
-            
-        if solution_method == "VNS":
+    if solution_method == "VNS":
             #object fct
             c = score
             #<=
@@ -1059,8 +1574,7 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
             BBB = list(performance_df["request location"])
             string_list = list(set(list(map(str, BBB))))
             number_of_reach_areas = len(string_list)
-            import ast
-            string_list_np = np.array([ast.literal_eval(n) for n in string_list])
+            string_list_np = np.array([eval(n) for n in string_list])
             pfloc_np = np.array([xi for xi in performance_df["request location"]])
             N_i = np.zeros((number_of_reach_areas, len(pfloc_np)))
             N_i_rhs = np.zeros((number_of_reach_areas))
@@ -1072,7 +1586,6 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
             
             
             #begin requestbased neighbourhood search
-            from random import randint
             import datetime
             VNS_time_max = datetime.datetime.now() + datetime.timedelta(seconds = max_time)
             fx_min = 0
@@ -1084,7 +1597,7 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
                 N_size = len(N_loc)
                 x_i = list(x_opt)
                 for i in range(0,max_iter_N):
-                    no_ones = randint(1,min(N_i_rhs[N],N_size))
+                    no_ones = np.random.randint(1,min(N_i_rhs[N],N_size))
                     random_x = np.array([1] * no_ones + [0] * int(N_size-no_ones))
                     np.random.shuffle(random_x)
                     x_i = np.array(x_i)
@@ -1099,10 +1612,9 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
                 
             x = np.array(x_opt)
             
-        
-        if solution_method == "random":
+    if solution_method == "random":
             start_time = time.time()
-            #generate 2000 random solutions and test objective function for each
+            #generate 20000 random solutions and test objective function for each
             #choose interval that illustrates distribution of ones and zeros 
             N = 1000
             binary_int = [0.03,0.18]
@@ -1134,20 +1646,17 @@ def solve(x_data, scoring_method=2, solution_method="DAG",
             end_time = time.time() - start_time
             print(end_time)
         
-        
-        
-        solve.x = np.squeeze(x)
-        solve.score = score
-        solve.time = end_time
-        return(solve)
+
+    solve.x = np.squeeze(x)
+    solve.score = score
+    solve.time = end_time
+    return(solve)
     
-   
- 
+
 def visualize(x_data, x_res, name_of_html = 'EOSpython', color = 'black'):
     #plot multi sat scenario and solution
     import numpy as np
     import folium
-    #import copy
     performance_df = x_data.pf_df
     schedules = x_res.x
     a = x_data.m
@@ -1201,11 +1710,11 @@ def evaluate(x_data, x_res):
     sunelevation = np.mean(x_data.pf_df['sun elevation'].iloc[np.where(x_res.x)])
     totalarea =  np.sum(x_data.pf_df['area'].iloc[np.where(x_res.x)])
     
-    EOSevaluate.scenario = pd.DataFrame({'metric':['requests', 'attempts','constraints', 'avg angle', 'avg area', 'avg price', 'avg sun elevation', 'avg cloud cover', 'avg priority'],
+    evaluate.scenario = pd.DataFrame({'metric':['requests', 'attempts','constraints', 'avg angle', 'avg area', 'avg price', 'avg sun elevation', 'avg cloud cover', 'avg priority'],
                                  'value':[reqss_m, atts_m, constraintss_m, angles_m, areas_m, prices_m, sun_elevations_m, ccs_m, prio_m]})
 
 
-    EOSevaluate.solution = pd.DataFrame({'metric':['acquisitions', 'total profit', 'avg cloud cover', 'cloud cover < 10', 'cloud cover > 30', 'avg angle', 'angle < 10', 'angle > 30', 'avg priority', 'priority 1', 'priority 2', 'priority 3', 'priority 4', 'avg sun elevation', 'total area'],
+    evaluate.solution = pd.DataFrame({'metric':['acquisitions', 'total profit', 'avg cloud cover', 'cloud cover < 10', 'cloud cover > 30', 'avg angle', 'angle < 10', 'angle > 30', 'avg priority', 'priority 1', 'priority 2', 'priority 3', 'priority 4', 'avg sun elevation', 'total area'],
                                  'value':[acq, profit, avg_cloud, cloud_good, cloud_bad, avg_angle, angle_good, angle_bad, avg_priority, priority1, priority2, priority3, priority4, sunelevation, totalarea]})
 
-    return(EOSevaluate)
+    return(evaluate)

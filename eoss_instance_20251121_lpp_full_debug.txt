@@ -1,0 +1,19 @@
+=== LPP FULL LOG ===
+type(LPP): <class 'function'>
+callable(LPP): True
+module: EOSpython.LPP_data_setup
+name: LPP_data
+
+Public attrs (9):
+B, F, LHS, RHS, eLHS, eRHS, performance_df, stereo, strips
+
+=== ATTR DETAILS ===
+- B: type=<class 'numpy.ndarray'>, shape=(27, 265), dtype=float64
+- F: type=<class 'numpy.ndarray'>, shape=(265, 265), dtype=float64
+- LHS: type=<class 'cvxopt.base.spmatrix'>, size=(602, 265)
+- RHS: type=<class 'numpy.ndarray'>, shape=(602,), dtype=float64
+- eLHS: type=<class 'numpy.ndarray'>, shape=(16, 265), dtype=float64
+- eRHS: type=<class 'numpy.ndarray'>, shape=(16,), dtype=float64
+- performance_df: type=<class 'pandas.core.frame.DataFrame'>, shape=(265, 24), cols=['index', 'ID', 'stereo', 'satellite', 'satellite location', 'request location', 'time', 'area', 'strips', 'duration', 'distance', 'angle', 'sun elevation', 'cloud cover estimate', 'priority', 'priority mod', 'customer type mod', 'price', 'waiting time', 'uncertainty', 'cloud cover real', 'score_scenario', 'score_method', 'score_alpha']
+- stereo: type=<class 'numpy.ndarray'>, shape=(16, 265), dtype=float64
+- strips: type=<class 'numpy.ndarray'>, shape=(68, 265), dtype=float64
