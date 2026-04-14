@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import time
 from types import SimpleNamespace
 from EOSpython import EOS
 
@@ -45,31 +46,37 @@ def load_instance(base_path: str):
 base_path = "eoss_instance_20251121"
 x_data = load_instance(base_path)
 
+t_total_start = time.time()
 res = EOS.solve(
     x_data,
     solution_method="DAG",
     use_existing_score=True,
     score_column="score_scenario",
 )
+t_total_no_io = time.time() - t_total_start
 
 print("x (qtde selecionados):", int(np.sum(res.x)))
 print("obj:", float(-res.score @ res.x))
-print("time:", res.time)
+print("T_solver:", res.time)
+print("T_total_no_io:", t_total_no_io)
 
 eval_res = EOS.evaluate(x_data, res)
 print("obj avaliado (scenario):", eval_res.scenario)
 print("obj avaliado (solution):", eval_res.solution)
 
 
+t_total_start2 = time.time()
 res.calc = EOS.solve(
     x_data,
     solution_method="DAG",
     use_existing_score=False,
 )
+t_total_no_io2 = time.time() - t_total_start2
 
 print("x (qtde selecionados):", int(np.sum(res.calc.x)))
 print("obj:", float(-res.calc.score @ res.calc.x))
-print("time:", res.calc.time)
+print("T_solver:", res.calc.time)
+print("T_total_no_io:", t_total_no_io2)
 
 eval_res = EOS.evaluate(x_data, res)
 print("obj avaliado (scenario):", eval_res.scenario)
