@@ -62,10 +62,10 @@ def save_instance(base_path: str, x_data):
 
 sat_TLEs = [38755]
 
-horizon_start = [2025,11,21,9,40]
-horizon = 8
+horizon_start = [2026,4,23,9,40]
+horizon = 48
 
-database, map_file = EOS.customer_db(number_of_requests_0=250)
+database, map_file = EOS.customer_db(number_of_requests_0=1000)
 
 x_data = EOS.scenario(
     customer_database=database,
@@ -92,7 +92,7 @@ x_data.pf_df["score_method"] = "ELECTRE-III"
 x_data.pf_df["score_alpha"] = 1
 
 # Caminho base do arquivo
-base_path = "eoss_instance_20251121"
+base_path = "eoss_instance_1000_48h"
 
 x_data.df.to_csv(base_path + "_df.csv", index=False)
 x_data.pf_df.to_csv(base_path + "_pf_df.csv", index=False)

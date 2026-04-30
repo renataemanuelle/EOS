@@ -6,6 +6,30 @@ from types import SimpleNamespace
 from EOSpython import EOS
 
 
+def extract_instance_tag(base_path: str) -> str:
+    """Extrai o tag da instância a partir do base_path.
+    Ex: 'path/to/eoss_instance_1000_24h' -> '1000_24h'
+        'eoss_instance_20251121'          -> '20251121'
+    """
+    name = os.path.basename(base_path)
+    prefix = "eoss_instance_"
+    idx = name.find(prefix)
+    if idx != -1:
+        tag = name[idx + len(prefix):]
+        suffixes = ("_info", "_pf_df", "_df", "_lpp_state",
+                    "_lpp_performance_df", "_sats")
+        for suf in suffixes:
+            suf_pos = tag.find(suf)
+            if suf_pos != -1:
+                return tag[:suf_pos]
+        dot = tag.rfind(".")
+        if dot != -1:
+            return tag[:dot]
+        return tag
+    dot = name.rfind(".")
+    return name[:dot] if dot != -1 else name
+
+
 def load_instance(base_path: str):
     df = pd.read_pickle(base_path + "_df.pkl")
     pf_df = pd.read_pickle(base_path + "_pf_df.pkl")
@@ -129,7 +153,8 @@ def export_solution_vector_csv(x_data, res,
 # ============================================================================
 #  Execução principal
 # ============================================================================
-base_path = "eoss_instance_20251121"
+base_path = "eoss_instance_250_8h"
+tag = extract_instance_tag(base_path)
 x_data = load_instance(base_path)
 
 # --- Solve 1: score_scenario (ELECTRE-III pré-calculado) ---
@@ -158,30 +183,30 @@ print(eval_res.solution.to_string(index=False))
 
 export_evaluation_csv(x_data, res, t_solver=res.time, t_total=t_total_no_io,
                       solution_method="DAG",
-                      output_path="Results/Evaluation_EOS.csv")
+                      output_path=f"Results/Evaluation_EOS_{tag}.csv")
 export_solution_vector_csv(x_data, res,
-                           output_path="Results/Solution_Vector_EOS.csv")
+                           output_path=f"Results/Solution_Vector_EOS_{tag}.csv")
 
 # --- Solve 2: score calculado internamente ---
-t_total_start2 = time.time()
-res_calc = EOS.solve(
-    x_data,
-    solution_method="DAG",
-    use_existing_score=False,
-)
-t_total_no_io2 = time.time() - t_total_start2
+# t_total_start2 = time.time()
+# res_calc = EOS.solve(
+#     x_data,
+#     solution_method="DAG",
+#     use_existing_score=False,
+# )
+# t_total_no_io2 = time.time() - t_total_start2
 
-print()
-print("=" * 60)
-print("  SOLVE 2 — score calculado internamente")
-print("=" * 60)
-print("x (qtde selecionados):", int(np.sum(res_calc.x)))
-print("obj:", float(-res_calc.score @ res_calc.x))
-print("T_solver:", res_calc.time)
-print("T_total_no_io:", t_total_no_io2)
+# print()
+# print("=" * 60)
+# print("  SOLVE 2 — score calculado internamente")
+# print("=" * 60)
+# print("x (qtde selecionados):", int(np.sum(res_calc.x)))
+# print("obj:", float(-res_calc.score @ res_calc.x))
+# print("T_solver:", res_calc.time)
+# print("T_total_no_io:", t_total_no_io2)
 
-eval_res2 = EOS.evaluate(x_data, res_calc)
-print("obj avaliado (scenario):")
-print(eval_res2.scenario.to_string(index=False))
-print("obj avaliado (solution):")
-print(eval_res2.solution.to_string(index=False))
+# eval_res2 = EOS.evaluate(x_data, res_calc)
+# print("obj avaliado (scenario):")
+# print(eval_res2.scenario.to_string(index=False))
+# print("obj avaliado (solution):")
+# print(eval_res2.solution.to_string(index=False))
