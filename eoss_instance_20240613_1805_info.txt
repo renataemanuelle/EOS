@@ -1,0 +1,5 @@
+Cenário de simulação
+Início: [2024, 6, 13, 14, 5]
+Horizonte: 8 horas
+NORADs usados: [38755, 40053]
+Tamanho de df: 100 linhas
