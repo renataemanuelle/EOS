@@ -60,12 +60,12 @@ def save_instance(base_path: str, x_data):
 
 # Gerar cenário
 
-sat_TLEs = [38755]
+sat_TLEs = [38755, 40053, 38012]
 
-horizon_start = [2026,4,23,9,40]
-horizon = 48
+horizon_start = [2026,6,13,9,40]
+horizon = 8
 
-database, map_file = EOS.customer_db(number_of_requests_0=1000)
+database, map_file = EOS.customer_db(number_of_requests_0=22250)
 
 x_data = EOS.scenario(
     customer_database=database,
