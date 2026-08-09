@@ -164,14 +164,45 @@ def scenario(customer_database, m, seconds_gran = 20, NORAD_ids = [38755, 40053]
     # TLE = tle2.text.split('\n')
     # TLEs.append(TLE)
     
+    # TLEs = list()
+    # for i in range(0, len(NORAD_ids)):
+    #     #tle = requests.get('https://www.celestrak.com/satcat/tle.php?CATNR={}'.format(NORAD_ids[i]), #old version
+    #     tle = "SPOT 6\r\n1 38755U 12047A   25354.62722674  .00000394  00000+0  94532-4 0  9999\r\n2 38755  98.1570  59.2669 0001351  78.2954 281.8397 14.58539265707024"
+    #     TLE = tle.split('\r\n')
+    #     TLEs.append(TLE)
+    # # NORAD_ids = [38012, 39019, 38755, 40053]
+    # print(TLEs)
+    
+    
+    # Offline TLE catalog keyed by NORAD (no network).
+    # Format must stay: "NAME\r\nline1\r\nline2" then .split('\r\n')
+    # → list [name, line1, line2] for ephem.readtle(...)
+    TLE_CATALOG = {
+        38755: "SPOT 6\r\n1 38755U 12047A   25354.62722674  .00000394  00000+0  94532-4 0  9999\r\n2 38755  98.1570  59.2669 0001351  78.2954 281.8397 14.58539265707024",
+        40053: "SPOT 7\r\n1 40053U 14034A   26217.62998561  .00000635  00000+0  13869-3 0  9991\r\n2 40053  98.0591 278.8401 0001672  84.5524 275.5868 14.60998770644354",
+        38012: "PLEIADES 1A\r\n1 38012U 11076F   26217.67538360  .00000338  00000+0  82451-4 0  9992\r\n2 38012  98.1948 292.1074 0001326  71.6928  90.2448 14.58558749779203",
+        39019: "PLEIADES 1B\r\n1 39019U 12068A   19303.10054518 -.00000046  00000-0 -91078-7 0  9993\r\n2 39019  98.1870  15.9140 0001220  88.0086 272.1258 14.58558050367792",
+    }
+
     TLEs = list()
-    for i in range(0, len(NORAD_ids)):
-        #tle = requests.get('https://www.celestrak.com/satcat/tle.php?CATNR={}'.format(NORAD_ids[i]), #old version
-        tle = "SPOT 6\r\n1 38755U 12047A   25354.62722674  .00000394  00000+0  94532-4 0  9999\r\n2 38755  98.1570  59.2669 0001351  78.2954 281.8397 14.58539265707024"
-        TLE = tle.split('\r\n')
+    for norad in NORAD_ids:
+        if norad not in TLE_CATALOG:
+            raise ValueError(
+                f"NORAD {norad} ausente no TLE_CATALOG offline. "
+                f"Disponíveis: {sorted(TLE_CATALOG.keys())}"
+            )
+        tle_str = TLE_CATALOG[norad]
+        TLE = tle_str.split('\r\n')
+        # NORAD is embedded in TLE line 1/2 — sanity check against catalog key
+        if str(norad) not in TLE[1] or str(norad) not in TLE[2]:
+            raise ValueError(
+                f"TLE do NORAD {norad} inconsistente: "
+                f"ID não encontrado nas linhas TLE ({TLE[1]!r} / {TLE[2]!r})"
+            )
         TLEs.append(TLE)
-    # NORAD_ids = [38012, 39019, 38755, 40053]
+
     print(TLEs)
+    
     
 
     ############### TLE FETCHING ##################
