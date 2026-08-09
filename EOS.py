@@ -37,12 +37,12 @@ import pandas as pd
 
 def customer_db(number_of_requests_0 = 1000,
                 satellite_swath = 3600, #km^2 for square acquisition -> 60 km swath
+                map_generation=True,
                 ):
     import folium
     import pandas as pd
     import numpy as np
     
-    map_generation=True
     
     ############# DATA GENERATION INPUT ####################
     #number of requests from customers through # days!
