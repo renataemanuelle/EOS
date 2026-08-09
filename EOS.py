@@ -99,6 +99,7 @@ def customer_db(number_of_requests_0 = 1000,
     
     
     ##Start map generation
+    m = None
     if map_generation == True:
         m = folium.Map(location=[20, 0], zoom_start=2) #tiles= 'Cartodb Positron'
         from EOSpython.plot_requests import plot_requests
