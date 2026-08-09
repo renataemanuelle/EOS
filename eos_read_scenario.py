@@ -2,14 +2,16 @@ import numpy as np
 import pandas as pd
 import time
 import os
+import argparse
 from types import SimpleNamespace
 from EOSpython import EOS
 
 
 def extract_instance_tag(base_path: str) -> str:
     """Extrai o tag da instância a partir do base_path.
-    Ex: 'path/to/eoss_instance_1000_24h' -> '1000_24h'
-        'eoss_instance_20251121'          -> '20251121'
+    Ex: 'Instances/eoss_instance_1000_24h'      -> '1000_24h'
+        'Instances/eoss_instance_250_8h_2sat'   -> '250_8h_2sat'
+        'eoss_instance_20251121'                -> '20251121'
     """
     name = os.path.basename(base_path)
     prefix = "eoss_instance_"
@@ -28,6 +30,39 @@ def extract_instance_tag(base_path: str) -> str:
         return tag
     dot = name.rfind(".")
     return name[:dot] if dot != -1 else name
+
+
+def build_instance_base_path(n_requests: int,
+                             horizon: int,
+                             n_sats: int | None = None,
+                             instances_dir: str = "Instances") -> str:
+    """Resolve o base_path a partir de N, H e (opcional) nº de satélites.
+
+    Ordem de busca:
+      1) Instances/eoss_instance_{N}_{H}h_{K}sat   (formato novo)
+      2) Instances/eoss_instance_{N}_{H}h           (legado SBPO, 1 sat)
+      3) mesmos nomes no cwd (compatibilidade)
+    """
+    names = []
+    if n_sats is not None:
+        names.append(f"eoss_instance_{n_requests}_{horizon}h_{n_sats}sat")
+    names.append(f"eoss_instance_{n_requests}_{horizon}h")
+
+    candidates = []
+    for name in names:
+        candidates.append(os.path.join(instances_dir, name))
+        candidates.append(name)
+
+    for base in candidates:
+        if os.path.isfile(base + "_pf_df.pkl") and os.path.isfile(base + "_lpp_state.npz"):
+            return base
+
+    tried = "\n  - ".join(c + "_*" for c in candidates)
+    raise FileNotFoundError(
+        f"Instância não encontrada para N={n_requests}, H={horizon}h"
+        + (f", sats={n_sats}" if n_sats is not None else "")
+        + f".\nTentou:\n  - {tried}"
+    )
 
 
 def load_instance(base_path: str):
@@ -81,6 +116,7 @@ def export_evaluation_csv(x_data, res, t_solver, t_total, solution_method,
     # --- scenario (sobre pf_df completo, equivalente a scenario_raw do RKO) ---
     rows.append(("scenario", "requests",           int(pf["ID"].nunique())))
     rows.append(("scenario", "attempts",            len(pf)))
+    rows.append(("scenario", "n_sats",              len(x_data.sats)))
     rows.append(("scenario", "constraints",
                  int(x_data.LPP.eRHS.shape[0] + x_data.LPP.RHS.shape[0])))
     rows.append(("scenario", "avg_angle",           f"{pf['angle'].mean():.6f}"))
@@ -150,63 +186,87 @@ def export_solution_vector_csv(x_data, res,
     print(f"[SolutionVector] Exported to {output_path} ({n} rows)")
 
 
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Carrega instância EOS, resolve com DAG e exporta Evaluation/Solution_Vector."
+    )
+    p.add_argument("n_requests", type=int, nargs="?", default=None,
+                   help="Nº de requisições (ex.: 250)")
+    p.add_argument("horizon", type=int, nargs="?", default=None,
+                   help="Horizonte em horas (ex.: 8)")
+    p.add_argument("n_sats", type=int, nargs="?", default=None,
+                   help="Nº de satélites (ex.: 2). Se omitido, tenta formato legado.")
+    p.add_argument("--base", type=str, default=None,
+                   help="base_path completo (ex.: Instances/eoss_instance_250_8h_2sat). "
+                        "Sobrescreve N/H/sats.")
+    p.add_argument("--instances-dir", type=str, default="Instances",
+                   help="Pasta das instâncias (default: Instances)")
+    return p.parse_args()
+
+
 # ============================================================================
 #  Execução principal
 # ============================================================================
-base_path = "eoss_instance_250_8h"
-tag = extract_instance_tag(base_path)
-x_data = load_instance(base_path)
+# Defaults alinhados ao gen (edite aqui ou passe por CLI):
+#   python eos_read_scenario.py
+#   python eos_read_scenario.py 250 8 2
+#   python eos_read_scenario.py --base Instances/eoss_instance_250_8h_2sat
+DEFAULT_N_REQUESTS = 250
+DEFAULT_HORIZON = 8
+DEFAULT_N_SATS = 2
 
-# --- Solve 1: score_scenario (ELECTRE-III pré-calculado) ---
-t_total_start = time.time()
-res = EOS.solve(
-    x_data,
-    solution_method="DAG",
-    use_existing_score=True,
-    score_column="score_scenario",
-)
-t_total_no_io = time.time() - t_total_start
+if __name__ == "__main__":
+    args = parse_args()
 
-print("=" * 60)
-print("  SOLVE 1 — score_scenario (ELECTRE-III)")
-print("=" * 60)
-print("x (qtde selecionados):", int(np.sum(res.x)))
-print("obj:", float(-res.score @ res.x))
-print("T_solver:", res.time)
-print("T_total_no_io:", t_total_no_io)
+    if args.base:
+        base_path = args.base
+        # aceita path com sufixo acidental
+        for suf in ("_info.txt", "_pf_df.pkl", "_df.pkl", "_sats.txt"):
+            if base_path.endswith(suf):
+                base_path = base_path[: -len(suf)]
+                break
+    else:
+        n_requests = args.n_requests if args.n_requests is not None else DEFAULT_N_REQUESTS
+        horizon = args.horizon if args.horizon is not None else DEFAULT_HORIZON
+        n_sats = args.n_sats if args.n_sats is not None else DEFAULT_N_SATS
+        base_path = build_instance_base_path(
+            n_requests, horizon, n_sats, instances_dir=args.instances_dir
+        )
 
-eval_res = EOS.evaluate(x_data, res)
-print("obj avaliado (scenario):")
-print(eval_res.scenario.to_string(index=False))
-print("obj avaliado (solution):")
-print(eval_res.solution.to_string(index=False))
+    tag = extract_instance_tag(base_path)
+    print(f"[INFO] base_path = {base_path}")
+    print(f"[INFO] tag       = {tag}")
 
-export_evaluation_csv(x_data, res, t_solver=res.time, t_total=t_total_no_io,
-                      solution_method="DAG",
-                      output_path=f"Results/Evaluation_EOS_{tag}.csv")
-export_solution_vector_csv(x_data, res,
-                           output_path=f"Results/Solution_Vector_EOS_{tag}.csv")
+    x_data = load_instance(base_path)
+    print(f"[INFO] sats={x_data.sats} (|S|={len(x_data.sats)}), "
+          f"|A|={len(x_data.pf_df)}, requests={x_data.pf_df['ID'].nunique()}")
 
-# --- Solve 2: score calculado internamente ---
-# t_total_start2 = time.time()
-# res_calc = EOS.solve(
-#     x_data,
-#     solution_method="DAG",
-#     use_existing_score=False,
-# )
-# t_total_no_io2 = time.time() - t_total_start2
+    # --- Solve: score_scenario (ELECTRE-III pré-calculado) ---
+    t_total_start = time.time()
+    res = EOS.solve(
+        x_data,
+        solution_method="DAG",
+        use_existing_score=True,
+        score_column="score_scenario",
+    )
+    t_total_no_io = time.time() - t_total_start
 
-# print()
-# print("=" * 60)
-# print("  SOLVE 2 — score calculado internamente")
-# print("=" * 60)
-# print("x (qtde selecionados):", int(np.sum(res_calc.x)))
-# print("obj:", float(-res_calc.score @ res_calc.x))
-# print("T_solver:", res_calc.time)
-# print("T_total_no_io:", t_total_no_io2)
+    print("=" * 60)
+    print("  SOLVE — score_scenario (ELECTRE-III)")
+    print("=" * 60)
+    print("x (qtde selecionados):", int(np.sum(res.x)))
+    print("obj:", float(-res.score @ res.x))
+    print("T_solver:", res.time)
+    print("T_total_no_io:", t_total_no_io)
 
-# eval_res2 = EOS.evaluate(x_data, res_calc)
-# print("obj avaliado (scenario):")
-# print(eval_res2.scenario.to_string(index=False))
-# print("obj avaliado (solution):")
-# print(eval_res2.solution.to_string(index=False))
+    eval_res = EOS.evaluate(x_data, res)
+    print("obj avaliado (scenario):")
+    print(eval_res.scenario.to_string(index=False))
+    print("obj avaliado (solution):")
+    print(eval_res.solution.to_string(index=False))
+
+    export_evaluation_csv(x_data, res, t_solver=res.time, t_total=t_total_no_io,
+                          solution_method="DAG",
+                          output_path=f"Results/Evaluation_EOS_{tag}.csv")
+    export_solution_vector_csv(x_data, res,
+                               output_path=f"Results/Solution_Vector_EOS_{tag}.csv")
