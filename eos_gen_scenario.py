@@ -75,7 +75,7 @@ base_path = os.path.join("Instances", f"eoss_instance_{instance_tag}")
 os.makedirs(os.path.dirname(base_path) or ".", exist_ok=True)
 print(f"[INFO] base_path = {base_path}")
 
-database, map_file = EOS.customer_db(number_of_requests_0=n_requests)
+database, map_file = EOS.customer_db(number_of_requests_0=n_requests, map_generation=False)
 
 x_data = EOS.scenario(
     customer_database=database,
@@ -85,7 +85,8 @@ x_data = EOS.scenario(
     weather_real=False,
     simplify=False,
     schedule_start=horizon_start,
-    hours_horizon=horizon
+    hours_horizon=horizon,
+    map_generation=False,
 )
 
 # Calcular score do cenário (ELECTRE-III) e salvar no pf_df
