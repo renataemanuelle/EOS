@@ -1,6 +1,7 @@
 from EOSpython import EOS
 import pandas as pd
 import numpy as np
+import os
 
 from types import SimpleNamespace
 
@@ -60,12 +61,21 @@ def save_instance(base_path: str, x_data):
 
 # Gerar cenário
 
-sat_TLEs = [38755, 40053, 38012]
+sat_TLEs = [38755, 40053]
 
 horizon_start = [2026,6,13,9,40]
 horizon = 8
+n_requests = 250
 
-database, map_file = EOS.customer_db(number_of_requests_0=22250)
+# Prefixo eoss_instance_ (padrão do repo / RKO / eos_read_scenario).
+# Formato: eoss_instance_{requisições}_{horizonte}h_{n_sats}sat
+n_sats = len(sat_TLEs)
+instance_tag = f"{n_requests}_{horizon}h_{n_sats}sat"
+base_path = os.path.join("Instances", f"eoss_instance_{instance_tag}")
+os.makedirs(os.path.dirname(base_path) or ".", exist_ok=True)
+print(f"[INFO] base_path = {base_path}")
+
+database, map_file = EOS.customer_db(number_of_requests_0=n_requests)
 
 x_data = EOS.scenario(
     customer_database=database,
@@ -91,9 +101,6 @@ x_data.pf_df["score_scenario"] = score_scenario
 x_data.pf_df["score_method"] = "ELECTRE-III"
 x_data.pf_df["score_alpha"] = 1
 
-# Caminho base do arquivo
-base_path = "eoss_instance_1000_48h"
-
 x_data.df.to_csv(base_path + "_df.csv", index=False)
 x_data.pf_df.to_csv(base_path + "_pf_df.csv", index=False)
 
@@ -107,6 +114,7 @@ with open(base_path + "_info.txt", "w", encoding="utf-8") as f:
     f.write(f"Horizonte: {horizon} horas\n")
     f.write(f"NORADs usados: {sat_TLEs}\n")
     f.write(f"Tamanho de df: {len(x_data.df)} linhas\n")
+    f.write(f"Instância: eoss_instance_{instance_tag}\n")
 
 
 save_instance(base_path, x_data)
