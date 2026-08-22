@@ -1,3 +1,47 @@
+def _lpp_pairs_covered_by_rows(M, p0, p1, chunk=20000):
+    """True where the 2-column pair is a subset of some 0/1 row of M (F_pair ⊆ M_row)."""
+    import numpy as np
+    n = len(p0)
+    if n == 0 or M.size == 0 or M.shape[0] == 0:
+        return np.zeros(n, dtype=bool)
+    Mb = np.ascontiguousarray(M.astype(bool, copy=False))
+    out = np.zeros(n, dtype=bool)
+    for s in range(0, n, chunk):
+        e = min(s + chunk, n)
+        out[s:e] = np.any(Mb[:, p0[s:e]] & Mb[:, p1[s:e]], axis=0)
+    return out
+
+
+def _lpp_rows_subset_of_containers(rows, containers):
+    """True where rows[i] ⊆ some containers[j] (both 0/1)."""
+    import numpy as np
+    n = rows.shape[0]
+    drop = np.zeros(n, dtype=bool)
+    if n == 0 or containers.size == 0 or containers.shape[0] == 0:
+        return drop
+    C = containers.astype(bool, copy=False)
+    for i in range(n):
+        cols = np.flatnonzero(rows[i])
+        if cols.size == 0:
+            continue
+        drop[i] = np.any(C[:, cols].all(axis=1))
+    return drop
+
+
+def _lpp_pairs_to_csr(p0, p1, n_cols):
+    from scipy import sparse
+    import numpy as np
+    n = len(p0)
+    if n == 0:
+        return sparse.csr_matrix((0, n_cols))
+    rows = np.repeat(np.arange(n, dtype=np.int64), 2)
+    cols = np.empty(n * 2, dtype=np.int64)
+    cols[0::2] = p0
+    cols[1::2] = p1
+    data = np.ones(n * 2, dtype=np.float64)
+    return sparse.csr_matrix((data, (rows, cols)), shape=(n, n_cols))
+
+
 #LPP data computation - multi satellite (no battery, higher dim location_slots, etc)
 def LPP_data_multi(performance_df, number_of_acq_points, time_slots, location_slots, 
              height_satellite, rotation_speed, seconds_gran,
@@ -311,45 +355,32 @@ def LPP_data_multi(performance_df, number_of_acq_points, time_slots, location_sl
             complete_index = np.where(infeasible_sets[i,:])[0]
             FF_new[complete_index,complete_index] = 0
                 
-        #pairwise infeasible maneuvers
-        np.fill_diagonal(FF_new,0) 
-        total_FF = int(np.sum(FF_new))
-        F_pair = np.zeros((total_FF, FF_new.shape[1]))
-        FF_index = np.arange(total_FF)
+        #pairwise infeasible maneuvers (Plan1+: column indices, no dense F_pair)
+        np.fill_diagonal(FF_new,0)
         FF_pair = np.where(FF_new == 1)
-        F_pair[FF_index, FF_pair[0]] = 1 
-        F_pair[FF_index, FF_pair[1]] = 1 
-        
-        ###check if pair is in A or B
-        f1 = F_pair.shape[0]
-        for i in range(0, F_pair.shape[0]):
-            in_A = np.any(np.sum(A_constraint- F_pair[i,:] <0, axis = 1) == 0)
-            in_B = np.any(np.sum(B - F_pair[i,:] <0, axis = 1) == 0)
-            if in_A or in_B:
-                F_pair[i,:] = 0
-        F_pair = F_pair[np.sum(F_pair, axis = 1)!=0,:] #time
-        print("for F_pair in A,B - dropped:", f1,  'to', F_pair.shape[0], "constraints")
-    
-    
-        #concatenate into one F
-        F = np.concatenate((F_pair,F_set), axis = 0)
-        
-        
+        F_pair_p0 = np.asarray(FF_pair[0], dtype=np.int64)
+        F_pair_p1 = np.asarray(FF_pair[1], dtype=np.int64)
+        f1 = F_pair_p0.shape[0]
+        covered = (
+            _lpp_pairs_covered_by_rows(A_constraint, F_pair_p0, F_pair_p1)
+            | _lpp_pairs_covered_by_rows(B, F_pair_p0, F_pair_p1)
+        )
+        F_pair_p0 = F_pair_p0[~covered]
+        F_pair_p1 = F_pair_p1[~covered]
+        print("for F_pair in A,B - dropped:", f1,  'to', F_pair_p0.shape[0], "constraints")
+
         ####check if a or B is in F_set
         len_ab = A_constraint.shape[0]+B.shape[0]
-        for i in range(0, A_constraint.shape[0]):
-            in_f = np.any(np.sum(F_set - A_constraint[i,:] <0, axis = 1) == 0)
-            if in_f:
-                A_constraint[i,:] = 0
+        if F_set.shape[0] > 0:
+            drop_A = _lpp_rows_subset_of_containers(A_constraint, F_set)
+            A_constraint[drop_A, :] = 0
+            drop_B = _lpp_rows_subset_of_containers(B, F_set)
+            B[drop_B, :] = 0
+            B_rhs[drop_B] = 0
         A_constraint = A_constraint[np.sum(A_constraint, axis = 1)!=0,:] #time
-        for i in range(0, B.shape[0]):
-            in_f = np.any(np.sum(F_set - B[i,:] <0, axis = 1) == 0)
-            if in_f:
-                B[i,:] = 0
-                B_rhs[i] = 0 
         B = B[np.sum(B, axis = 1)!=0,:] #time
         B_rhs = B_rhs[B_rhs != 0] #r h s
-        print("for A,B in F_Set - dropped:", len_ab,  'to', A_constraint.shape[0]+B.shape[0], "constraints")   
+        print("for A,B in F_Set - dropped:", len_ab,  'to', A_constraint.shape[0]+B.shape[0], "constraints")
         
     
     
@@ -384,47 +415,34 @@ def LPP_data_multi(performance_df, number_of_acq_points, time_slots, location_sl
         Strips_constraint[i,Strips[i][1:]] = -1
         
     
-    #### OPTIMIZATION
-    #less than constraint
-    #LHS
-    A_constraint.shape
-    B.shape
-    F.shape
-    LESS_THAN_Matrix = np.concatenate((B,A_constraint,F), axis = 0) #(A_constraint)
-    LESS_THAN_Matrix.shape
-    
-    #RHS
-    #one acq per request except for stereo -> it is there
-    B_rhs.shape
-    F_rhs = np.ones((F.shape[0]+A_constraint.shape[0],1))  #added A
-    F.shape
-    rhs_ABF = np.concatenate((B_rhs,np.squeeze(F_rhs)), axis = 0)
-    rhs_ABF.shape
-    #rhs_ABFL = np.concatenate((rhs_ABF, L), axis = 0)
-    #rhs_ABFL.shape
-    
-    #equal to constraint
-    S_constraint.shape
-    Strips_constraint.shape
-    eLHS = S_constraint #np.concatenate((S_constraint, Strips_constraint), axis = 0)   
+    #### OPTIMIZATION (Plan1+: stack CSR, never materialize dense LESS_THAN_Matrix)
+    from scipy import sparse
+    from scipy_sparce_to_spmatrix import scipy_sparse_to_spmatrix
+    print("[INFO] LPP assembly: sparse Plan1+")
+
+    n_cols = B.shape[1]
+    if simplify == False:
+        F_pair_sp = _lpp_pairs_to_csr(F_pair_p0, F_pair_p1, n_cols)
+        if F_set.shape[0] > 0:
+            F_sp = sparse.vstack([F_pair_sp, sparse.csr_matrix(F_set)], format="csr")
+        else:
+            F_sp = F_pair_sp
+    else:
+        F_sp = sparse.csr_matrix(F)
+
+    LHS = sparse.vstack(
+        [sparse.csr_matrix(B), sparse.csr_matrix(A_constraint), F_sp],
+        format="csr",
+    )
+    F_rhs = np.ones(F_sp.shape[0] + A_constraint.shape[0], dtype=np.float64)
+    rhs_ABF = np.concatenate((np.asarray(B_rhs, dtype=np.float64).ravel(), F_rhs), axis=0)
+    keep = np.diff(LHS.indptr) != 0
+    LHS_csr = LHS[keep]
+    RHS_leq = rhs_ABF[keep]
+
+    eLHS = S_constraint
     eRHS = np.zeros(eLHS.shape[0])
-    
-    #drop empty rows
-    non_empty_rows = ~(np.sum(LESS_THAN_Matrix, axis = 1)==0)
-    LHS_leq = LESS_THAN_Matrix[non_empty_rows,:]
-    RHS_leq = rhs_ABF[non_empty_rows]
-    RHS_leq.shape
-    
-    #convert LHS matrix to sparce matrix
-    sparcity = np.sum(LHS_leq == 0)/(LHS_leq.shape[0]*LHS_leq.shape[1])  #level of sparsity
-    if sparcity >= 0.75:
-        from scipy import sparse
-        b=sparse.csr_matrix(LHS_leq)
-        from scipy_sparce_to_spmatrix import scipy_sparse_to_spmatrix
-        LHS_leq = scipy_sparse_to_spmatrix(b)
-    if sparcity < 0.75:
-        from cvxopt import matrix
-        LHS_leq = matrix(LHS_leq)
+    LHS_leq = scipy_sparse_to_spmatrix(LHS_csr)
     #################### LPP DONE ################################
     
     
